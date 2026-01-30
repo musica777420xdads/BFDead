@@ -1,0 +1,1846 @@
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+    Name = "Cuacker Hub",
+    LoadingTitle = "Top 1 Scripter",
+    Icon = "gem",
+    LoadingSubtitle = "skidded",
+    ConfigurationSaving = {
+      Enabled = false,
+      FolderName = CuackerBlox,
+      FileName = "Cuacker"
+   },
+    Discord = {Enabled = false},
+    KeySystem = false
+})
+
+repeat wait() until game:GetService("ReplicatedStorage").Util.CameraShaker.Main
+
+local ss = require(game:GetService("ReplicatedStorage").Util.CameraShaker.Main)
+local xx = function() return nil end
+
+ss.StartShake = xx
+ss.ShakeOnce = xx
+ss.ShakeSustain = xx
+ss.CamerShakeInstance = xx
+ss.Shake = xx
+ss.Start = xx
+
+local running = false
+local TeleportEnabled = false
+local SelectedPlayer = nil
+local TeleportConnection = nil
+local TweenSpeed = {X = 350, Y = 350}
+local PredictionStrength = 0
+local SafeZoneActive = false
+local SafeZoneConnection = nil
+local OriginalPosition = nil
+local FastAttackEnabled = false
+local FastAttackConnection = nil
+local FastAttackRange = 1200
+local ESPEnabled = true
+local ESPBoxes = false
+local ESPNames = true
+local EliteESP = false
+local ESPDistance = true
+local ESPMaxDistance = 99999999
+local OriginalCamera = nil
+local SpectateConnection = nil
+local ActiveTween = nil
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+
+local Net = ReplicatedStorage.Modules.Net
+local RegisterHit = Net["RE/RegisterHit"]
+local RegisterAttack = Net["RE/RegisterAttack"]
+
+local CombatUtil = require(ReplicatedStorage.Modules.CombatUtil)
+
+local function TP(targetHRP)
+    local player = Players.LocalPlayer
+    if not player.Character then return end
+
+    local HRP = player.Character:FindFirstChild("HumanoidRootPart")
+    local Humanoid = player.Character:FindFirstChild("Humanoid")
+    if not HRP or not Humanoid then return end
+
+    HRP.AssemblyLinearVelocity = Vector3.zero
+    HRP.AssemblyAngularVelocity = Vector3.zero
+    Humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+
+    local predictedPos = targetHRP.Position + (targetHRP.Velocity * PredictionStrength)
+
+    local targetCFrame =
+        CFrame.new(predictedPos)
+        * CFrame.Angles(0, math.rad(targetHRP.Orientation.Y), 0)
+        * CFrame.new(0, YOffset, 0)
+
+    local Distance = (targetCFrame.Position - HRP.Position).Magnitude
+    local horizontalDist = math.sqrt(
+        (targetCFrame.Position.X - HRP.Position.X)^2 +
+        (targetCFrame.Position.Z - HRP.Position.Z)^2
+    )
+    local verticalDist = math.abs(targetCFrame.Position.Y - HRP.Position.Y)
+
+    local speed = TweenSpeed.X
+    if verticalDist > horizontalDist then speed = TweenSpeed.Y end
+
+    if ActiveTween then
+        ActiveTween:Cancel()
+    end
+
+    ActiveTween = TweenService:Create(
+        HRP,
+        TweenInfo.new(Distance / speed, Enum.EasingStyle.Linear),
+        {CFrame = targetCFrame}
+    )
+
+    ActiveTween:Play()
+
+    task.delay(0.05, function()
+        if Humanoid then
+            Humanoid:ChangeState(Enum.HumanoidStateType.Running)
+        end
+    end)
+end
+
+local TARGET_PARTS = {
+    UpperTorso = true,
+    LowerTorso = true,
+    HumanoidRootPart = true
+}
+
+local function SetNoCollide()
+    local character = Players.LocalPlayer.Character
+    if not character then return end
+
+    for _, v in ipairs(character:GetChildren()) do
+        if v:IsA("BasePart") and TARGET_PARTS[v.Name] then
+            v.CanCollide = false
+            v.CanTouch = false
+            v.CanQuery = false
+        end
+    end
+end
+
+local function SetCollide()
+    local character = Players.LocalPlayer.Character
+    if not character then return end
+
+    for _, v in ipairs(character:GetChildren()) do
+        if v:IsA("BasePart") and TARGET_PARTS[v.Name] then
+            v.CanCollide = true
+            v.CanTouch = true
+            v.CanQuery = true
+        end
+    end
+end
+
+local function GetNearestPlayer()
+    local myChar = Players.LocalPlayer.Character
+    local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    if not myHRP then return nil end
+    
+    local nearestPlayer = nil
+    local shortestDistance = math.huge
+    
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= Players.LocalPlayer and player.Character then
+            local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+            local humanoid = player.Character:FindFirstChild("Humanoid")
+            
+            if hrp and humanoid and humanoid.Health > 0 then
+                local dist = (hrp.Position - myHRP.Position).Magnitude
+                if dist < shortestDistance then
+                    shortestDistance = dist
+                    nearestPlayer = player
+                end
+            end
+        end
+    end
+    
+    return nearestPlayer
+end
+
+
+local function GetPlayerList()
+    local list = {}
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= Players.LocalPlayer then table.insert(list, p.Name) end
+    end
+    if #list == 0 then table.insert(list, "Ninguno") end
+    return list
+end
+
+local function StartTeleporting()
+    if TeleportConnection then TeleportConnection:Disconnect() end
+    TeleportConnection = RunService.Heartbeat:Connect(function()
+        if TeleportEnabled and SelectedPlayer and not SafeZoneActive then
+            local target = Players:FindFirstChild(SelectedPlayer)
+            if target and target.Character then
+                local hrp = target.Character:FindFirstChild("HumanoidRootPart")
+                if hrp then 
+                    TP(hrp)
+                    SetNoCollide()
+                end
+            end
+        end
+    end)
+end
+
+local function StartInstaTeleporting()
+    if InstaTpConnection then InstaTpConnection:Disconnect() end
+    
+    InstaTpConnection = RunService.Stepped:Connect(function()
+        if not InstaTeleportEnabled or not SelectedPlayer or SafeZoneActive then return end
+        
+        local Players = game:GetService("Players")
+        local LocalPlayer = Players.LocalPlayer
+        
+        pcall(function()
+            local char = LocalPlayer.Character
+            local target = Players:FindFirstChild(SelectedPlayer)
+            
+            if char and target and target.Character then
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+                local targetHRP = target.Character:FindFirstChild("HumanoidRootPart")
+                
+                if hrp and targetHRP then
+                    local bangOffset = CFrame.new(0, YOffset, 0) 
+                    hrp.CFrame = targetHRP.CFrame * bangOffset
+                end
+            end
+        end)
+    end)
+end
+
+local function StartSpectating()
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    local Camera = workspace.CurrentCamera
+    
+    if not OriginalCamera then
+        OriginalCamera = Camera.CameraSubject
+    end
+    
+    if SpectateConnection then 
+        SpectateConnection:Disconnect() 
+    end
+    
+    SpectateConnection = RunService.RenderStepped:Connect(function()
+        if not SpectateEnabled or not SelectedPlayer then 
+            StopSpectating()
+            return 
+        end
+        
+        pcall(function()
+            local target = Players:FindFirstChild(SelectedPlayer)
+            
+            if target and target.Character then
+                local targetHumanoid = target.Character:FindFirstChild("Humanoid")
+                
+                if targetHumanoid then
+                    Camera.CameraSubject = targetHumanoid
+                else
+                    StopSpectating()
+                end
+            else
+                StopSpectating()
+            end
+        end)
+    end)
+end
+
+function StopSpectating()
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    local Camera = workspace.CurrentCamera
+    
+    if SpectateConnection then
+        SpectateConnection:Disconnect()
+        SpectateConnection = nil
+    end
+    
+    if OriginalCamera then
+        pcall(function()
+            Camera.CameraSubject = OriginalCamera
+        end)
+    else
+        pcall(function()
+            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+                Camera.CameraSubject = LocalPlayer.Character.Humanoid
+            end
+        end)
+    end
+    
+    OriginalCamera = nil
+end
+
+local Tab = Window:CreateTab("Players", gem)
+
+local Tab2 = Window:CreateTab("Killaura", gem)
+
+local Tab3 = Window:CreateTab("Killaura (NPCs)", gem)
+
+local Tab4 = Window:CreateTab("Misc", gem)
+
+local Tab5 = Window:CreateTab("Teleports", gem)
+
+local Tab6 = Window:CreateTab("ESP", gem)
+
+local TabBoat = Window:CreateTab("Boat", gem)
+
+Tab6:CreateToggle({
+    Name = "Enable ESP",
+    CurrentValue = true,
+    Callback = function(v)
+        ESPEnabled = v
+    end
+})
+
+Tab6:CreateToggle({
+    Name = "Boxes",
+    CurrentValue = true,
+    Callback = function(v)
+        ESPBoxes = v
+    end
+})
+
+Tab6:CreateToggle({
+    Name = "Names",
+    CurrentValue = true,
+    Callback = function(v)
+        ESPNames = v
+    end
+})
+
+Tab6:CreateToggle({
+    Name = "Distance",
+    CurrentValue = false,
+    Callback = function(v)
+        ESPDistance = v
+    end
+})
+
+Tab6:CreateToggle({
+    Name = "Elite ESP",
+    CurrentValue = false,
+    Callback = function(v)
+        EliteESP = v
+    end
+})
+
+Tab6:CreateToggle({
+    Name = "Fruit ESP",
+    CurrentValue = false,
+    Callback = function(v)
+        FruitEsp = v
+    end
+})
+
+Tab6:CreateSlider({
+    Name = "Max Distance",
+    Range = {100, 99999999},
+    Increment = 100,
+    CurrentValue = 99999999,
+    Callback = function(v)
+        ESPMaxDistance = v
+    end
+})
+
+local Camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ESPObjects = {}
+local EliteESPObjects = {}
+
+local function NewDraw(type, props)
+    local d = Drawing.new(type)
+    for i,v in pairs(props) do
+        d[i] = v
+    end
+    return d
+end
+
+local function ClearESP(plr)
+    if ESPObjects[plr] then
+        for _,obj in pairs(ESPObjects[plr]) do
+            obj:Remove()
+        end
+        ESPObjects[plr] = nil
+    end
+end
+
+local function ClearEliteESP(obj)
+    if EliteESPObjects[obj] then
+        for _,espObj in pairs(EliteESPObjects[obj]) do
+            espObj:Remove()
+        end
+        EliteESPObjects[obj] = nil
+    end
+end
+
+local function GetLevel(plr)
+    local data = plr:FindFirstChild("Data")
+    if data then
+        local level = data:FindFirstChild("Level")
+        if level and level.Value then
+            return tostring(level.Value)
+        end
+    end
+    return nil
+end
+
+
+local function GetExactLocation(plr)
+    local attr = plr:GetAttribute("ExactLocation")
+    if attr ~= nil then
+        return tostring(attr)
+    end
+
+    local v = plr:FindFirstChild("ExactLocation")
+    if v and v.Value ~= nil then
+        return tostring(v.Value)
+    end
+
+    local ls = plr:FindFirstChild("leaderstats")
+    if ls then
+        local lv = ls:FindFirstChild("ExactLocation")
+        if lv and lv.Value ~= nil then
+            return tostring(lv.Value)
+        end
+    end
+
+    return nil
+end
+
+RunService.RenderStepped:Connect(function()
+    for _,plr in ipairs(Players:GetPlayers()) do
+        if plr == LocalPlayer then
+            ClearESP(plr)
+            continue
+        end
+
+        local char = plr.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        local hum = char and char:FindFirstChild("Humanoid")
+
+        if not ESPEnabled or not hrp or not hum or hum.Health <= 0 then
+            ClearESP(plr)
+            continue
+        end
+
+        local dist = (Camera.CFrame.Position - hrp.Position).Magnitude
+        if dist > ESPMaxDistance then
+            ClearESP(plr)
+            continue
+        end
+
+        local pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+        if not onScreen then
+            ClearESP(plr)
+            continue
+        end
+
+        ESPObjects[plr] = ESPObjects[plr] or {}
+
+        if ESPBoxes then
+            ESPObjects[plr].Box = ESPObjects[plr].Box or NewDraw("Square", {
+                Thickness = 2,
+                Filled = false,
+                Color = Color3.fromRGB(255, 60, 60)
+            })
+
+            local size = Vector2.new(2200 / dist, 3200 / dist)
+            ESPObjects[plr].Box.Size = size
+            ESPObjects[plr].Box.Position = Vector2.new(
+                pos.X - size.X / 2,
+                pos.Y - size.Y / 2
+            )
+            ESPObjects[plr].Box.Visible = true
+        elseif ESPObjects[plr].Box then
+            ESPObjects[plr].Box.Visible = false
+        end
+
+       if ESPNames or ESPDistance then
+            ESPObjects[plr].Text = ESPObjects[plr].Text or NewDraw("Text", {
+                Size = 16,
+                Center = true,
+                Outline = true,
+                Color = Color3.new(1,1,1)
+            })
+
+            local txt = ""
+
+            if ESPNames then
+                txt = plr.Name
+                
+                local level = GetLevel(plr)
+                if level then
+                    txt ..= " [Lvl " .. level .. "]"
+                end
+                
+                local exactLoc = GetExactLocation(plr)
+                if exactLoc then
+                    txt ..= " [" .. exactLoc .. "]"
+                end
+            end
+
+            if ESPDistance then
+                txt ..= " (" .. math.floor(dist / 10) .. "m)"
+            end
+
+            ESPObjects[plr].Text.Text = txt
+            ESPObjects[plr].Text.Position = Vector2.new(pos.X, pos.Y - 25)
+            ESPObjects[plr].Text.Visible = true
+        elseif ESPObjects[plr].Text then
+            ESPObjects[plr].Text.Visible = false
+        end
+
+    if EliteESP then
+        local eliteNames = {"Diablo", "Deandre", "Urban"}
+        
+        for _, eliteName in ipairs(eliteNames) do
+            local obj = ReplicatedStorage:FindFirstChild(eliteName)
+            
+            if obj then
+                local hrp = obj:FindFirstChild("HumanoidRootPart")
+                
+                if hrp then
+                    local dist = (Camera.CFrame.Position - hrp.Position).Magnitude
+                    
+                    if dist <= ESPMaxDistance then
+                        local pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+                        
+                        if onScreen then
+                            EliteESPObjects[obj] = EliteESPObjects[obj] or {}
+                            
+                            EliteESPObjects[obj].Box = EliteESPObjects[obj].Box or NewDraw("Square", {
+                                Thickness = 3,
+                                Filled = false,
+                                Color = Color3.fromRGB(255, 215, 0)
+                            })
+                            
+                            local size = Vector2.new(2200 / dist, 3200 / dist)
+                            EliteESPObjects[obj].Box.Size = size
+                            EliteESPObjects[obj].Box.Position = Vector2.new(
+                                pos.X - size.X / 2,
+                                pos.Y - size.Y / 2
+                            )
+                            EliteESPObjects[obj].Box.Visible = true
+                            
+                            EliteESPObjects[obj].Text = EliteESPObjects[obj].Text or NewDraw("Text", {
+                                Size = 18,
+                                Center = true,
+                                Outline = true,
+                                Color = Color3.fromRGB(255, 215, 0)
+                            })
+                            
+                            EliteESPObjects[obj].Text.Text = eliteName .. " (" .. math.floor(dist / 10) .. "m)"
+                            EliteESPObjects[obj].Text.Position = Vector2.new(pos.X, pos.Y - 25)
+                            EliteESPObjects[obj].Text.Visible = true
+                        else
+                            ClearEliteESP(obj)
+                        end
+                    else
+                        ClearEliteESP(obj)
+                    end
+                else
+                    ClearEliteESP(obj)
+                end
+            end
+        end
+        
+        if FruitEsp then
+            for _, obj in ipairs(workspace:GetChildren()) do
+                if string.find(obj.Name, "Fruit") or obj.Name == "Fruit" then
+                    if obj:IsA("Tool") or obj:IsA("Model") then
+                        local hrp = obj:FindFirstChild("Handle")
+
+                        if hrp then
+                            local dist = (Camera.CFrame.Position - hrp.Position).Magnitude
+
+                            if dist <= ESPMaxDistance then
+                                local pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+
+                                if onScreen then
+                                    FruitEspObjects[obj] = FruitEspObjects[obj] or {}
+
+                                    FruitEspObjects[obj].Box = FruitEspObjects[obj].Box or NewDraw("Square", {
+                                        Thickness = 3,
+                                        Filled = false,
+                                        Color = Color3.fromRGB(255, 215, 0)
+                                    })
+
+                                    local size = Vector2.new(2200 / dist, 3200 / dist)
+                                    FruitEspObjects[obj].Box.Size = size
+                                    FruitEspObjects[obj].Box.Position = Vector2.new(
+                                        pos.X - size.X / 2,
+                                        pos.Y - size.Y / 2
+                                    )
+                                    FruitEspObjects[obj].Box.Visible = true
+
+                                    FruitEspObjects[obj].Text = FruitEspObjects[obj].Text or NewDraw("Text", {
+                                        Size = 18,
+                                        Center = true,
+                                        Outline = true,
+                                        Color = Color3.fromRGB(255, 215, 0)
+                                    })
+
+                                    FruitEspObjects[obj].Text.Text =
+                                        obj.Name .. " (" .. math.floor(dist / 10) .. "m)"
+                                    FruitEspObjects[obj].Text.Position =
+                                        Vector2.new(pos.X, pos.Y - 25)
+                                    FruitEspObjects[obj].Text.Visible = true
+                                else
+                                    ClearFruitEsp(obj)
+                                end
+                            else
+                                ClearFruitEsp(obj)
+                            end
+                        else
+                            ClearFruitEsp(obj)
+                        end
+                    end
+                end
+            end
+        end
+
+
+        local enemiesFolder = workspace:FindFirstChild("Enemies")
+        if enemiesFolder then
+            for _, eliteName in ipairs(eliteNames) do
+                local obj = enemiesFolder:FindFirstChild(eliteName)
+                
+                if obj then
+                    local hrp = obj:FindFirstChild("HumanoidRootPart")
+                    
+                    if hrp then
+                        local dist = (Camera.CFrame.Position - hrp.Position).Magnitude
+                        
+                        if dist <= ESPMaxDistance then
+                            local pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+                            
+                            if onScreen then
+                                EliteESPObjects[obj] = EliteESPObjects[obj] or {}
+                                
+                                EliteESPObjects[obj].Box = EliteESPObjects[obj].Box or NewDraw("Square", {
+                                    Thickness = 3,
+                                    Filled = false,
+                                    Color = Color3.fromRGB(255, 215, 0)
+                                })
+                                
+                                local size = Vector2.new(2200 / dist, 3200 / dist)
+                                EliteESPObjects[obj].Box.Size = size
+                                EliteESPObjects[obj].Box.Position = Vector2.new(
+                                    pos.X - size.X / 2,
+                                    pos.Y - size.Y / 2
+                                )
+                                EliteESPObjects[obj].Box.Visible = true
+                                
+                                EliteESPObjects[obj].Text = EliteESPObjects[obj].Text or NewDraw("Text", {
+                                    Size = 18,
+                                    Center = true,
+                                    Outline = true,
+                                    Color = Color3.fromRGB(255, 215, 0)
+                                })
+                                
+                                EliteESPObjects[obj].Text.Text = eliteName .. " (" .. math.floor(dist / 10) .. "m)"
+                                EliteESPObjects[obj].Text.Position = Vector2.new(pos.X, pos.Y - 25)
+                                EliteESPObjects[obj].Text.Visible = true
+                            else
+                                ClearEliteESP(obj)
+                            end
+                        else
+                            ClearEliteESP(obj)
+                        end
+                    else
+                        ClearEliteESP(obj)
+                    end
+                end
+            end
+        end
+    else
+        for obj, _ in pairs(EliteESPObjects) do
+            ClearEliteESP(obj)
+        end
+    end
+end
+end)
+
+Players.PlayerRemoving:Connect(ClearESP)
+
+local PlayerDropdown = Tab:CreateDropdown({
+    Name = "Seleccionar Jugador",
+    Options = GetPlayerList(),
+    CurrentOption = {"Ninguno"},
+    Flag = "PlayerDropdown",
+    Callback = function(opt)
+        if type(opt) == "table" then opt = opt[1] end
+        SelectedPlayer = (opt ~= "Ninguno") and opt or nil
+    end,
+})
+
+Tab:CreateToggle({
+    Name = "Tween To Player",
+    CurrentValue = false,
+    Flag = "TPToggle",
+    Callback = function(v)
+        TeleportEnabled = v
+        if v then
+            if SelectedPlayer then StartTeleporting() SetNoCollide() end
+        else
+            if TeleportConnection then TeleportConnection:Disconnect() SetCollide() end
+            if ActiveTween then ActiveTween:Cancel() ActiveTween = nil end
+        end
+    end,
+})
+
+Tab:CreateToggle({
+    Name = "Insta Tp",
+    CurrentValue = false,
+    Flag = "InstaTpToggle",
+    Callback = function(v)
+        InstaTeleportEnabled = v
+        
+        if v then
+            if SelectedPlayer then 
+                StartInstaTeleporting() 
+            else
+            end
+        else
+            if InstaTpConnection then 
+                InstaTpConnection:Disconnect() 
+                InstaTpConnection = nil 
+            end
+        end
+    end,
+})
+
+Tab:CreateToggle({
+    Name = "Spectate Player",
+    CurrentValue = false,
+    Flag = "SpectateToggle",
+    Callback = function(v)
+        SpectateEnabled = v
+        
+        if v then
+            if SelectedPlayer then 
+                StartSpectating() 
+            else
+                -- Opcional: notificar que no hay jugador seleccionado
+            end
+        else
+            StopSpectating()
+        end
+    end,
+})
+
+Tab:CreateButton({
+    Name = "Refrescar Lista",
+    Callback = function()
+        PlayerDropdown:Refresh(GetPlayerList(), true)
+    end
+})
+
+Tab:CreateSlider({
+    Name = "Y Offset",
+    Range = {0, 500},
+    Increment = 1,
+    Suffix = "",
+    CurrentValue = 0,
+    Flag = "YOffsetSlider",
+    Callback = function(Value)
+        YOffset = Value
+    end,
+})
+
+Tab:CreateSlider({
+    Name = "Prediction",
+    Range = {0, 10},
+    Increment = 0.1,
+    CurrentValue = 0,
+    Callback = function(v)
+        PredictionStrength = v
+    end
+})
+
+local function AttackMultipleTargets(targets)
+    pcall(function()
+        if not targets or #targets == 0 then return end
+        
+        local allTargets = {}
+        
+        for _, targetChar in pairs(targets) do
+            local head = targetChar:FindFirstChild("Head")
+            if head then
+                table.insert(allTargets, {targetChar, head})
+            end
+        end
+        
+        if #allTargets == 0 then return end
+        
+        local attackArgs = {0}
+        RegisterAttack:FireServer(unpack(attackArgs))
+        
+        local hitArgs = {
+            allTargets[1][2],
+            allTargets
+        }
+        RegisterHit:FireServer(unpack(hitArgs))
+    end)
+end
+
+Tab4:CreateToggle({
+    Name="Fast Attack (Players & NPCs)",
+    CurrentValue=false,
+    Callback=function(v)
+        FastAttackEnabled = v
+        if v then
+            if FastAttackConnection then task.cancel(FastAttackConnection) end
+
+            FastAttackConnection = task.spawn(function()
+                while FastAttackEnabled do
+                    task.wait(0.01)
+
+                    local myChar = Players.LocalPlayer.Character
+                    local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+                    if not myHRP then continue end
+
+                    local targetsInRange = {}
+
+                    -- Check for players
+                    for _, player in pairs(Players:GetPlayers()) do
+                        if player ~= Players.LocalPlayer and player.Character then
+                            local humanoid = player.Character:FindFirstChild("Humanoid")
+                            local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+
+                            if humanoid and hrp and humanoid.Health > 0 then
+                                local dist = (hrp.Position - myHRP.Position).Magnitude
+                                if dist <= FastAttackRange then
+                                    table.insert(targetsInRange, player.Character)
+                                end
+                            end
+                        end
+                    end
+
+                    -- Check for NPCs
+                    local enemiesFolder = workspace:FindFirstChild("Enemies")
+                    if enemiesFolder then
+                        for _, npc in pairs(enemiesFolder:GetChildren()) do
+                            local humanoid = npc:FindFirstChild("Humanoid")
+                            local hrp = npc:FindFirstChild("HumanoidRootPart")
+
+                            if humanoid and hrp and humanoid.Health > 0 then
+                                local dist = (hrp.Position - myHRP.Position).Magnitude
+                                if dist <= FastAttackRange then
+                                    table.insert(targetsInRange, npc)
+                                end
+                            end
+                        end
+                    end
+                    
+                    if #targetsInRange > 0 then
+                        AttackMultipleTargets(targetsInRange)
+                    end
+                end
+            end)
+        else
+            if FastAttackConnection then
+                task.cancel(FastAttackConnection)
+                FastAttackConnection = nil
+            end
+        end
+    end,
+})
+
+Tab2:CreateToggle({
+    Name="Fast Attack (Players)",
+    CurrentValue=false,
+    Callback=function(v)
+        FastAttackEnabled = v
+        if v then
+            if FastAttackConnection then task.cancel(FastAttackConnection) end
+
+            FastAttackConnection = task.spawn(function()
+                while FastAttackEnabled do
+                    task.wait(0.01)
+
+                    local myChar = Players.LocalPlayer.Character
+                    local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+                    if not myHRP then continue end
+
+                    local targetsInRange = {}
+
+                    for _, player in pairs(Players:GetPlayers()) do
+                        if player ~= Players.LocalPlayer and player.Character then
+                            local humanoid = player.Character:FindFirstChild("Humanoid")
+                            local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+
+                            if humanoid and hrp and humanoid.Health > 0 then
+                                local dist = (hrp.Position - myHRP.Position).Magnitude
+                                if dist <= FastAttackRange then
+                                    table.insert(targetsInRange, player.Character)
+                                end
+                            end
+                        end
+                    end
+                    
+                    if #targetsInRange > 0 then
+                        AttackMultipleTargets(targetsInRange)
+                    end
+                end
+            end)
+        else
+            if FastAttackConnection then
+                task.cancel(FastAttackConnection)
+                FastAttackConnection = nil
+            end
+        end
+    end,
+})
+
+Tab3:CreateToggle({
+    Name="Fast Attack (NPCs)",
+    CurrentValue=false,
+    Callback=function(v)
+        FastAttackEnabled = v
+        if v then
+            if FastAttackConnection then task.cancel(FastAttackConnection) end
+
+            FastAttackConnection = task.spawn(function()
+                while FastAttackEnabled do
+                    task.wait(0.01)
+
+                    local myChar = Players.LocalPlayer.Character
+                    local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+                    if not myHRP then continue end
+
+                    local targetsInRange = {}
+
+                    local enemiesFolder = workspace:FindFirstChild("Enemies")
+                    if enemiesFolder then
+                        for _, npc in pairs(enemiesFolder:GetChildren()) do
+                            local humanoid = npc:FindFirstChild("Humanoid")
+                            local hrp = npc:FindFirstChild("HumanoidRootPart")
+
+                            if humanoid and hrp and humanoid.Health > 0 then
+                                local dist = (hrp.Position - myHRP.Position).Magnitude
+                                if dist <= FastAttackRange then
+                                    table.insert(targetsInRange, npc)
+                                end
+                            end
+                        end
+                    end
+                    
+                    if #targetsInRange > 0 then
+                        AttackMultipleTargets(targetsInRange)
+                    end
+                end
+            end)
+        else
+            if FastAttackConnection then
+                task.cancel(FastAttackConnection)
+                FastAttackConnection = nil
+            end
+        end
+    end,
+})
+
+Tab2:CreateToggle({
+    Name="Fruit Attack (Kitsune)",
+    CurrentValue=false,
+    Callback=function(vatt)
+        FruitAttack = vatt
+        if vatt then
+            if FruitAttackConnection then 
+                task.cancel(FruitAttackConnection) 
+            end
+            
+            FruitAttackConnection = task.spawn(function()
+                while FruitAttack do
+                    task.wait(0.01)
+                    
+                    local targetPlayer = GetNearestPlayer()
+                    
+                    if targetPlayer and targetPlayer.Character then
+                        local attack67 = Players.LocalPlayer.Character.HumanoidRootPart
+                        local theother67 = targetPlayer.Character.HumanoidRootPart
+
+                        if attack67 and theother67 then
+                            local direction = (theother67.Position - attack67.Position).Unit
+
+                            local args = {
+                                vector.create(direction.X, direction.Y, direction.Z),
+                                1,
+                                true
+                            }
+                            game:GetService("Players").LocalPlayer.Character:WaitForChild("Kitsune-Kitsune"):WaitForChild("LeftClickRemote"):FireServer(unpack(args))
+                        end
+                    end
+                end
+            end)
+        else
+            if FruitAttackConnection then
+                task.cancel(FruitAttackConnection)
+                FruitAttackConnection = nil
+            end
+        end
+    end,
+})
+
+Tab2:CreateToggle({
+    Name="Fruit Attack (Empyrean-Kitsune)",
+    CurrentValue=false,
+    Callback=function(vatt141414)
+        FruitAttack = vatt141414
+        if vatt141414 then
+            if FruitAttackConnection611417 then 
+                task.cancel(FruitAttackConnection611417) 
+            end
+            
+            FruitAttackConnection611417 = task.spawn(function()
+                while FruitAttack do
+                    task.wait(0.01)
+                    
+                    local targetPlayer = GetNearestPlayer()
+                    
+                    if targetPlayer and targetPlayer.Character then
+                        local attack67 = Players.LocalPlayer.Character.HumanoidRootPart
+                        local theother67 = targetPlayer.Character.HumanoidRootPart
+
+                        if attack67 and theother67 then
+                            local direction = (theother67.Position - attack67.Position).Unit
+
+                            local args = {
+                                vector.create(direction.X, direction.Y, direction.Z),
+                                4,
+                                true
+                            }
+                            game:GetService("Players").LocalPlayer.Character:WaitForChild("Empyrean (Kitsune)-Empyrean (Kitsune)"):WaitForChild("LeftClickRemote"):FireServer(unpack(args))
+                        end
+                    end
+                end
+            end)
+        else
+            if FruitAttackConnection611417 then
+                task.cancel(FruitAttackConnection611417)
+                FruitAttackConnection611417 = nil
+            end
+        end
+    end,
+})
+
+Tab3:CreateToggle({
+    Name="Fruit Attack (Kitsune) [NPCs Only]",
+    CurrentValue=false,
+    Callback=function(kitsuneEnabled)
+        local kitsuneLoop = kitsuneEnabled
+
+        if kitsuneLoop then
+            if _G.KitsuneNPCLoop then
+                task.cancel(_G.KitsuneNPCLoop)
+            end
+
+            _G.KitsuneNPCLoop = task.spawn(function()
+                while kitsuneLoop do
+                    task.wait(0.01)
+
+                    local char = Players.LocalPlayer.Character
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                    if not hrp then continue end
+
+                    local enemies = workspace:FindFirstChild("Enemies")
+                    if not enemies then continue end
+
+                    for _, npc in pairs(enemies:GetChildren()) do
+                        local hum = npc:FindFirstChild("Humanoid")
+                        local npcHrp = npc:FindFirstChild("HumanoidRootPart")
+
+                        if hum and npcHrp and hum.Health > 0 then
+                            if (npcHrp.Position - hrp.Position).Magnitude <= 50 then
+                                local dir = (npcHrp.Position - hrp.Position).Unit
+
+                                local args = {
+                                    vector.create(dir.X, dir.Y, dir.Z),
+                                    1,
+                                    true
+                                }
+
+                                char:WaitForChild("Kitsune-Kitsune")
+                                    :WaitForChild("LeftClickRemote")
+                                    :FireServer(unpack(args))
+                            end
+                        end
+                    end
+                end
+            end)
+        else
+            kitsuneLoop = false
+            if _G.KitsuneNPCLoop then
+                task.cancel(_G.KitsuneNPCLoop)
+                _G.KitsuneNPCLoop = nil
+            end
+        end
+    end,
+})
+
+Tab3:CreateToggle({
+    Name="Fruit Attack (Empyrean-Kitsune) [NPCs Only]",
+    CurrentValue=false,
+    Callback=function(kitsuneEnabled1)
+        local kitsuneLoop1 = kitsuneEnabled1
+
+        if kitsuneLoop1 then
+            if _G.KitsuneNPCLoop12 then
+                task.cancel(_G.KitsuneNPCLoop12)
+            end
+
+            _G.KitsuneNPCLoop12 = task.spawn(function()
+                while kitsuneLoop1 do
+                    task.wait(0.01)
+
+                    local char = Players.LocalPlayer.Character
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                    if not hrp then continue end
+
+                    local enemies = workspace:FindFirstChild("Enemies")
+                    if not enemies then continue end
+
+                    for _, npc in pairs(enemies:GetChildren()) do
+                        local hum = npc:FindFirstChild("Humanoid")
+                        local npcHrp = npc:FindFirstChild("HumanoidRootPart")
+
+                        if hum and npcHrp and hum.Health > 0 then
+                            if (npcHrp.Position - hrp.Position).Magnitude <= 50 then
+                                local dir = (npcHrp.Position - hrp.Position).Unit
+
+                                local args = {
+                                    vector.create(dir.X, dir.Y, dir.Z),
+                                    4,
+                                    true
+                                }
+
+                                game:GetService("Players").LocalPlayer.Character:WaitForChild("Empyrean (Kitsune)-Empyrean (Kitsune)"):WaitForChild("LeftClickRemote"):FireServer(unpack(args))
+                            end
+                        end
+                    end
+                end
+            end)
+        else
+            kitsuneLoop1 = false
+            if _G.KitsuneNPCLoop12 then
+                task.cancel(_G.KitsuneNPCLoop12)
+                _G.KitsuneNPCLoop12 = nil
+            end
+        end
+    end,
+})
+
+Tab2:CreateToggle({
+    Name="Fruit Attack (Control)",
+    CurrentValue=false,
+    Callback=function(vatt123)
+        FruitAttack = vatt123
+        if vatt123 then
+            if FruitAttackConnectionControl then 
+                task.cancel(FruitAttackConnectionControl) 
+            end
+            
+            FruitAttackConnectionControl = task.spawn(function()
+                while FruitAttack do
+                    task.wait(0.01)
+                    
+                    local targetPlayer = GetNearestPlayer()
+                    
+                    if targetPlayer and targetPlayer.Character then
+                        local attack67 = Players.LocalPlayer.Character.HumanoidRootPart
+                        local theother67 = targetPlayer.Character.HumanoidRootPart
+
+                        if attack67 and theother67 then
+                            local direction = (theother67.Position - attack67.Position).Unit
+
+                            local args = {
+                                vector.create(direction.X, direction.Y, direction.Z),
+                                1,
+                                true
+                            }
+                            game:GetService("Players").LocalPlayer.Character:WaitForChild("Control-Control"):WaitForChild("LeftClickRemote"):FireServer(unpack(args))
+                        end
+                    end
+                end
+            end)
+        else
+            if FruitAttackConnectionControl then
+                task.cancel(FruitAttackConnectionControl)
+                FruitAttackConnectionControl = nil
+            end
+        end
+    end,
+})
+
+Tab3:CreateToggle({
+    Name="Fruit Attack (Control) [NPCs Only]",
+    CurrentValue=false,
+    Callback=function(ctrlEnabled)
+        local controlLoopActive = ctrlEnabled
+
+        if controlLoopActive then
+            if _G.ControlFruitLoop then
+                task.cancel(_G.ControlFruitLoop)
+            end
+
+            _G.ControlFruitLoop = task.spawn(function()
+                while controlLoopActive do
+                    task.wait(0.01)
+
+                    local myChar = Players.LocalPlayer.Character
+                    local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+                    if not myHRP then continue end
+
+                    local enemiesFolder = workspace:FindFirstChild("Enemies")
+                    if not enemiesFolder then continue end
+
+                    for _, npc in pairs(enemiesFolder:GetChildren()) do
+                        local humanoid = npc:FindFirstChild("Humanoid")
+                        local hrp = npc:FindFirstChild("HumanoidRootPart")
+
+                        if humanoid and hrp and humanoid.Health > 0 then
+                            local dist = (hrp.Position - myHRP.Position).Magnitude
+                            if dist <= 50 then
+                                local dir = (hrp.Position - myHRP.Position).Unit
+
+                                local args = {
+                                    vector.create(dir.X, dir.Y, dir.Z),
+                                    1,
+                                    true
+                                }
+
+                                myChar:WaitForChild("Control-Control")
+                                    :WaitForChild("LeftClickRemote")
+                                    :FireServer(unpack(args))
+                            end
+                        end
+                    end
+                end
+            end)
+        else
+            controlLoopActive = false
+            if _G.ControlFruitLoop then
+                task.cancel(_G.ControlFruitLoop)
+                _G.ControlFruitLoop = nil
+            end
+        end
+    end,
+})
+
+
+Tab2:CreateToggle({
+    Name="Fruit Attack (Pain)",
+    CurrentValue=false,
+    Callback=function(vatt1)
+        FruitAttack = vatt1
+        if vatt1 then
+            if FruitAttackConnection1 then 
+                task.cancel(FruitAttackConnection1) 
+            end
+            
+            FruitAttackConnection1 = task.spawn(function()
+                while FruitAttack do
+                    task.wait(0.01)
+                    
+                    local targetPlayer = GetNearestPlayer()
+                    
+                    if targetPlayer and targetPlayer.Character then
+                        local attack67 = Players.LocalPlayer.Character.HumanoidRootPart
+                        local theother67 = targetPlayer.Character.HumanoidRootPart
+
+                        if attack67 and theother67 then
+                            local direction = (theother67.Position - attack67.Position).Unit
+
+                            local args = {
+                                vector.create(direction.X, 0, direction.Z),
+                                1,
+                                true
+                            }
+                            game:GetService("Players").LocalPlayer.Character:WaitForChild("Pain-Pain"):WaitForChild("LeftClickRemote"):FireServer(unpack(args))
+                        end
+                    end
+                end
+            end)
+        else
+            if FruitAttackConnection1 then
+                task.cancel(FruitAttackConnection1)
+                FruitAttackConnection1 = nil
+            end
+        end
+    end,
+})
+
+Tab3:CreateToggle({
+    Name="Fruit Attack (Pain) [NPCs Only]",
+    CurrentValue=false,
+    Callback=function(painEnabled)
+        local painLoop = painEnabled
+
+        if painLoop then
+            if _G.PainNPCLoop then
+                task.cancel(_G.PainNPCLoop)
+            end
+
+            _G.PainNPCLoop = task.spawn(function()
+                while painLoop do
+                    task.wait(0.01)
+
+                    local char = Players.LocalPlayer.Character
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                    if not hrp then continue end
+
+                    local enemies = workspace:FindFirstChild("Enemies")
+                    if not enemies then continue end
+
+                    for _, npc in pairs(enemies:GetChildren()) do
+                        local hum = npc:FindFirstChild("Humanoid")
+                        local npcHrp = npc:FindFirstChild("HumanoidRootPart")
+
+                        if hum and npcHrp and hum.Health > 0 then
+                            if (npcHrp.Position - hrp.Position).Magnitude <= 50 then
+                                local dir = (npcHrp.Position - hrp.Position).Unit
+
+                                local args = {
+                                    vector.create(dir.X, 0, dir.Z),
+                                    1,
+                                    true
+                                }
+
+                                char:WaitForChild("Pain-Pain")
+                                    :WaitForChild("LeftClickRemote")
+                                    :FireServer(unpack(args))
+                            end
+                        end
+                    end
+                end
+            end)
+        else
+            painLoop = false
+            if _G.PainNPCLoop then
+                task.cancel(_G.PainNPCLoop)
+                _G.PainNPCLoop = nil
+            end
+        end
+    end,
+})
+
+Tab2:CreateToggle({
+    Name="Fruit Attack (Dragon)",
+    CurrentValue=false,
+    Callback=function(vatt1233)
+        FruitAttack = vatt1233
+        if vatt1233 then
+            if FFruitAttackConnection12 then 
+                task.cancel(FruitAttackConnection12) 
+            end
+            
+            FruitAttackConnection12 = task.spawn(function()
+                while FruitAttack do
+                    task.wait(0.01)
+                    
+                    local targetPlayer = GetNearestPlayer()
+                    
+                    if targetPlayer and targetPlayer.Character then
+                        local attack67 = Players.LocalPlayer.Character.HumanoidRootPart
+                        local theother67 = targetPlayer.Character.HumanoidRootPart
+
+                        if attack67 and theother67 then
+                            local direction = (theother67.Position - attack67.Position).Unit
+
+                            local args = {
+                                    vector.create(direction.X, direction.Y, direction.Z),
+                                    1
+                                }
+                                game:GetService("Players").LocalPlayer.Character:WaitForChild("Dragon-Dragon"):WaitForChild("LeftClickRemote"):FireServer(unpack(args))
+                        end
+                    end
+                end
+            end)
+        else
+            if FruitAttackConnection12 then
+                task.cancel(FruitAttackConnection12)
+                FruitAttackConnection12 = nil
+            end
+        end
+    end,
+})
+
+Tab2:CreateToggle({
+    Name="Fruit Attack (T-Rex)",
+    CurrentValue=false,
+    Callback=function(vatt123367676713)
+        FruitAttack = vatt123367676713
+        if vatt123367676713 then
+            if FruitAttackConnection16662 then 
+                task.cancel(FruitAttackConnection16662) 
+            end
+            
+            FruitAttackConnection16662 = task.spawn(function()
+                while FruitAttack do
+                    task.wait(0.01)
+                    
+                    local targetPlayer = GetNearestPlayer()
+                    
+                    if targetPlayer and targetPlayer.Character then
+                        local attack67 = Players.LocalPlayer.Character.HumanoidRootPart
+                        local theother67 = targetPlayer.Character.HumanoidRootPart
+
+                        if attack67 and theother67 then
+                            local direction = (theother67.Position - attack67.Position).Unit
+
+                            local args = {
+                                vector.create(direction.X, direction.Y, direction.Z),
+                                1
+                            }
+                            game:GetService("Players").LocalPlayer.Character:WaitForChild("T-Rex-T-Rex"):WaitForChild("LeftClickRemote"):FireServer(unpack(args))
+                        end
+                    end
+                end
+            end)
+        else
+            if FruitAttackConnection16662 then
+                task.cancel(FruitAttackConnection16662)
+                FruitAttackConnection16662 = nil
+            end
+        end
+    end,
+})
+
+Tab3:CreateToggle({
+    Name="Fruit Attack (Dragon) [NPCs Only]",
+    CurrentValue=false,
+    Callback=function(dragonEnabled)
+        local dragonLoop = dragonEnabled
+
+        if dragonLoop then
+            if _G.DragonNPCLoop then
+                task.cancel(_G.DragonNPCLoop)
+            end
+
+            _G.DragonNPCLoop = task.spawn(function()
+                while dragonLoop do
+                    task.wait(0.01)
+
+                    local char = Players.LocalPlayer.Character
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                    if not hrp then continue end
+
+                    local enemies = workspace:FindFirstChild("Enemies")
+                    if not enemies then continue end
+
+                    for _, npc in pairs(enemies:GetChildren()) do
+                        local hum = npc:FindFirstChild("Humanoid")
+                        local npcHrp = npc:FindFirstChild("HumanoidRootPart")
+
+                        if hum and npcHrp and hum.Health > 0 then
+                            if (npcHrp.Position - hrp.Position).Magnitude <= 50 then
+                                local dir = (npcHrp.Position - hrp.Position).Unit
+
+                                local args = {
+                                    vector.create(direction.X, direction.Y, direction.Z),
+                                    1
+                                }
+                                game:GetService("Players").LocalPlayer.Character:WaitForChild("Dragon-Dragon"):WaitForChild("LeftClickRemote"):FireServer(unpack(args))
+                            end
+                        end
+                    end
+                end
+            end)
+        else
+            dragonLoop = false
+            if _G.DragonNPCLoop then
+                task.cancel(_G.DragonNPCLoop)
+                _G.DragonNPCLoop = nil
+            end
+        end
+    end,
+})
+
+Tab3:CreateToggle({
+    Name="Fruit Attack (T-Rex) [NPCs Only]",
+    CurrentValue=false,
+    Callback=function(trexenabled)
+        local trexloop = trexenabled
+
+        if trexloop then
+            if _G.trexloop1 then
+                task.cancel(_G.trexloop1)
+            end
+
+            _G.trexloop1 = task.spawn(function()
+                while trexloop do
+                    task.wait(0.01)
+
+                    local char = Players.LocalPlayer.Character
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                    if not hrp then continue end
+
+                    local enemies = workspace:FindFirstChild("Enemies")
+                    if not enemies then continue end
+
+                    for _, npc in pairs(enemies:GetChildren()) do
+                        local hum = npc:FindFirstChild("Humanoid")
+                        local npcHrp = npc:FindFirstChild("HumanoidRootPart")
+
+                        if hum and npcHrp and hum.Health > 0 then
+                            if (npcHrp.Position - hrp.Position).Magnitude <= 50 then
+                                local dir = (npcHrp.Position - hrp.Position).Unit
+
+                                local args = {
+                                    vector.create(direction.X, direction.Y, direction.Z),
+                                    3                               
+                                }
+                                game:GetService("Players").LocalPlayer.Character:WaitForChild("T-Rex-T-Rex"):WaitForChild("LeftClickRemote"):FireServer(unpack(args))
+                            end
+                        end
+                    end
+                end
+            end)
+        else
+            trexloop = false
+            if _G.trexloop1 then
+                task.cancel(_G.trexloop1)
+                _G.trexloop1 = nil
+            end
+        end
+    end,
+})
+
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+
+UIS.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode ~= Enum.KeyCode.B then return end
+
+    local char = Players.LocalPlayer.Character
+    if not char then return end
+
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    local flag = hrp:FindFirstChild("UpLoop")
+
+    if flag then
+        flag:Destroy()
+        return
+    end
+
+    flag = Instance.new("BoolValue")
+    flag.Name = "UpLoop"
+    flag.Parent = hrp
+
+    task.spawn(function()
+        while flag.Parent do
+            local pos = hrp.Position
+            hrp.CFrame = CFrame.new(pos.X, pos.Y + 273861, pos.Z)
+            task.wait(0.05)
+        end
+    end)
+end)
+
+
+Tab4:CreateToggle({
+    Name="Anti Mover",
+    CurrentValue=false,
+    Callback=function(v)
+        local player = Players.LocalPlayer
+        if v then
+            local function add(char)
+                if not char:FindFirstChild("AntiMover") then
+                    Instance.new("Folder", char).Name = "AntiMover"
+                end
+            end
+
+            if player.Character then add(player.Character) end
+            _G.AntiMoverConnection = player.CharacterAdded:Connect(add)
+
+        else
+            if _G.AntiMoverConnection then _G.AntiMoverConnection:Disconnect() end
+            if player.Character and player.Character:FindFirstChild("AntiMover") then
+                player.Character.AntiMover:Destroy()
+            end
+        end
+    end,
+})
+
+local onenabledshotho = false
+
+UIS.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode ~= Enum.KeyCode.N then return end
+
+    local char = Players.LocalPlayer.Character
+    if not char then return end
+
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    onenabledshotho = not onenabledshotho
+
+    if onenabledshotho then
+        task.spawn(function()
+            while onenabledshotho do
+                local pos = hrp.Position
+                hrp.CFrame = CFrame.new(pos.X, pos.Y - 795679695796326, pos.Z)
+                task.wait(0.01)
+            end
+        end)
+    end
+end)
+Tab4:CreateToggle({
+    Name="Unbreakable",
+    CurrentValue=false,
+    Callback=function(skibidi)
+        Unbreakable = skibidi
+        if skibidi then
+            if UnbreakableConnection then task.cancel(UnbreakableConnection) end
+            UnbreakableConnection = task.spawn(function()
+                while Unbreakable do
+                    task.wait(0.1)
+                    if Players.LocalPlayer.Character:GetAttribute("Unbreakable") ~= true then
+                        Players.LocalPlayer.Character:SetAttribute("UnbreakableAll", true)
+                    end
+                end
+            end)
+            else
+                if UnbreakableConnection then
+                    task.cancel(UnbreakableConnection)
+                    Players.LocalPlayer.Character:SetAttribute("UnbreakableAll", false)
+                UnbreakableConnection = nil
+                end
+        end
+    end,
+})
+
+Tab4:CreateToggle({
+    Name="Auto V4",
+    CurrentValue=false,
+    Callback=function(papuxx)
+        autoV4 = papuxx
+        if papuxx then
+            if v4Connection then task.cancel(v4Connection) end
+            v4Connection = task.spawn(function()
+                while autoV4 do
+                    task.wait(0.5)
+                    local args = {
+                        true
+                    }
+                    game:GetService("Players").LocalPlayer:WaitForChild("Backpack"):WaitForChild("Awakening"):WaitForChild("RemoteFunction"):InvokeServer(unpack(args))
+                end
+            end)
+            else
+                if v4Connection then
+                    task.cancel(v4Connection)
+                v4Connection = nil
+                end
+        end
+    end,
+})
+
+Tab4:CreateToggle({
+    Name="Dash Length",
+    CurrentValue=false,
+    Callback=function(dashsh)
+        DashEnabled = dashsh
+        if dashsh then
+            if DashConnection then task.cancel(DashConnection) end
+            
+            DashConnection = task.spawn(function()
+                while DashEnabled do
+                    task.wait(0.1)
+                    local character = Players.LocalPlayer.Character
+                    if character then
+                        local currentValue = character:GetAttribute("DashLength")
+                        if currentValue ~= DashLenghtDistance420 then
+                            character:SetAttribute("DashLength", DashLenghtDistance420)
+                            character:SetAttribute("DashLengthAir", DashLenghtDistance420)
+                        end
+                    end
+                end
+            end)
+        else
+            if DashConnection then 
+                Players.LocalPlayer.Character:SetAttribute("DashLength", 1)
+                Players.LocalPlayer.Character:SetAttribute("DashLengthAir", 1)
+                task.cancel(DashConnection)
+                DashConnection = nil
+            end
+        end
+    end
+})
+
+local DashLenght = Tab4:CreateDropdown({
+    Name="Dash Length Value",
+    Options={"180", "120", "90", "60", "35", "5"},
+    CurrentOption={"5"},
+    MultipleOptions = false,
+    Flag="DashLenght12",
+    Callback=function(Dashii)
+        if type(Dashii) == "table" then Dashii = Dashii[1] end
+        DashLenghtDistance420 = tonumber(Dashii) or 120
+    end
+})
+
+Tab3:CreateToggle({
+    Name="Fruit Attack (Gravity) [NPCs Only]",
+    CurrentValue=false,
+    Callback=function(gtavenable)
+        local gravloop = gtavenable
+
+        if gravloop then
+            if _G.GravLoop1 then
+                task.cancel(_G.GravLoop1)
+            end
+
+            _G.GravLoop1 = task.spawn(function()
+                while gravloop do
+                    task.wait(0.01)
+
+                    local char = Players.LocalPlayer.Character
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                    if not hrp then continue end
+
+                    local enemies = workspace:FindFirstChild("Enemies")
+                    if not enemies then continue end
+
+                    for _, npc in pairs(enemies:GetChildren()) do
+                        local hum = npc:FindFirstChild("Humanoid")
+                        local npcHrp = npc:FindFirstChild("HumanoidRootPart")
+
+                        if hum and npcHrp and hum.Health > 0 then
+                            if (npcHrp.Position - hrp.Position).Magnitude <= 50 then
+                                local dir = (npcHrp.Position - hrp.Position).Unit
+
+                                local args = {
+                                    "TAP",
+                                    vector.create(npcHrp.Position.X, npcHrp.Position.Y, npcHrp.Position.Z),
+                                    vector.create(npcHrp.Position.X + 39.6, npcHrp.Position.Y + 25, npcHrp.Position.Z + 50)
+                                }
+                                game:GetService("Players").LocalPlayer.Character:WaitForChild("Humanoid"):WaitForChild(""):InvokeServer(unpack(args))
+                            end
+                        end
+                    end
+                end
+            end)
+        else
+            gravloop = false
+            if _G.GravLoop1 then
+                task.cancel(_G.GravLoop1)
+                _G.GravLoop1 = nil
+            end
+        end
+    end,
+})
+
+Tab2:CreateToggle({
+    Name="Fruit Attack (Gravity)",
+    CurrentValue=false,
+    Callback=function(GravPega123)
+        FruitAttack = GravPega123
+        if GravPega123 then
+            if FruitAttackConnectiongrav2 then 
+                task.cancel(FruitAttackConnectiongrav2) 
+            end
+            
+            FruitAttackConnectiongrav2 = task.spawn(function()
+                while FruitAttack do
+                    task.wait(0.01)
+                    
+                    local targetPlayer = GetNearestPlayer()
+                    
+                    if targetPlayer and targetPlayer.Character then
+                        local attack67 = Players.LocalPlayer.Character.HumanoidRootPart
+                        local theother67 = targetPlayer.Character.HumanoidRootPart
+
+                        if attack67 and theother67 then
+                            local direction = (theother67.Position - attack67.Position).Unit
+
+                            local args = {
+                                "TAP",
+                                vector.create(theother67.Position.X, theother67.Position.Y, theother67.Position.Z),
+                                vector.create(theother67.Position.X + 39.6, theother67.Position.Y + 25, theother67.Position.Z + 50)
+                            }
+                            game:GetService("Players").LocalPlayer.Character:WaitForChild("Humanoid"):WaitForChild(""):InvokeServer(unpack(args))
+                        end
+                    end
+                end
+            end)
+        else
+            if FruitAttackConnectiongrav2 then
+                task.cancel(FruitAttackConnectiongrav2)
+                FruitAttackConnectiongrav2 = nil
+            end
+        end
+    end,
+})
+
+Tab5:CreateButton({
+    Name = "Tp Mansion",
+    Callback = function()
+        local hrpTeleport = Players.LocalPlayer.Character.HumanoidRootPart
+        hrpTeleport.CFrame = CFrame.new(-12463, 376, -7567)
+    end
+})
+
+Tab5:CreateButton({
+    Name = "Tp V4",
+    Callback = function()
+        local hrpTeleport = Players.LocalPlayer.Character.HumanoidRootPart
+        hrpTeleport.CFrame = CFrame.new(28286, 14897, 103)
+        task.wait(0.5)
+        for i = 1, 150 do
+            task.wait(0.01)
+            hrpTeleport.CFrame = CFrame.new(28612, 14893, 106)
+        end           
+    end
+})
+
+Tab5:CreateButton({
+    Name = "Tp Barco",
+    Callback = function()
+        local hrpTeleport = Players.LocalPlayer.Character.HumanoidRootPart
+        hrpTeleport.CFrame = CFrame.new(-6500, 129, -123)
+    end
+})
+
+Tab5:CreateButton({
+    Name = "Tp Flamingo",
+    Callback = function()
+        local hrpTeleport = Players.LocalPlayer.Character.HumanoidRootPart
+        hrpTeleport.CFrame = CFrame.new(2285, 38, 899)
+    end
+})
+
+Tab5:CreateButton({
+    Name = "Tp ???",
+    Callback = function()
+        local hrpTeleport = Players.LocalPlayer.Character.HumanoidRootPart
+        for i = 1, 200 do
+        task.wait(0.01)
+        hrpTeleport.CFrame = CFrame.new(-276, 49362, -35249)
+        end
+    end
+})
+
+Tab5:CreateButton({
+    Name = "Remove TouchInterest",
+    Callback = function()
+        for _, descendant in pairs(game:GetDescendants()) do
+            if descendant:IsA("TouchTransmitter") then
+                descendant:Destroy()
+            end
+        end
+    end
+})
