@@ -172,7 +172,7 @@ local function GetPlayerList()
     for _, p in pairs(Players:GetPlayers()) do
         if p ~= Players.LocalPlayer then table.insert(list, p.Name) end
     end
-    if #list == 0 then table.insert(list, "Ninguno") end
+    if #list == 0 then table.insert(list, "None") end
     return list
 end
 
@@ -675,13 +675,13 @@ end)
 Players.PlayerRemoving:Connect(ClearESP)
 
 local PlayerDropdown = Tab:CreateDropdown({
-    Name = "Seleccionar Jugador",
+    Name = "Player Selection",
     Options = GetPlayerList(),
-    CurrentOption = {"Ninguno"},
+    CurrentOption = {"None"},
     Flag = "PlayerDropdown",
     Callback = function(opt)
         if type(opt) == "table" then opt = opt[1] end
-        SelectedPlayer = (opt ~= "Ninguno") and opt or nil
+        SelectedPlayer = (opt ~= "None") and opt or nil
     end,
 })
 
@@ -1377,6 +1377,48 @@ Tab2:CreateToggle({
 })
 
 Tab2:CreateToggle({
+    Name="Fruit Attack (Tiger)",
+    CurrentValue=false,
+    Callback=function(vatt1233)
+        FruitAttack = vatt1233
+        if vatt1233 then
+            if FFruitAttackConnection12 then 
+                task.cancel(FruitAttackConnection12) 
+            end
+            
+            FruitAttackConnection12 = task.spawn(function()
+                while FruitAttack do
+                    task.wait(0.01)
+                    
+                    local targetPlayer = GetNearestPlayer()
+                    
+                    if targetPlayer and targetPlayer.Character then
+                        local attack67 = Players.LocalPlayer.Character.HumanoidRootPart
+                        local theother67 = targetPlayer.Character.HumanoidRootPart
+
+                        if attack67 and theother67 then
+                            local direction = (theother67.Position - attack67.Position).Unit
+
+                            local args = {
+                                    vector.create(direction.X, direction.Y, direction.Z),
+                                    1
+                                }
+                                game:GetService("Players").LocalPlayer.Character:WaitForChild("Tiger-Tiger"):WaitForChild("LeftClickRemote"):FireServer(unpack(args))
+                        end
+                    end
+                end
+            end)
+        else
+            if FruitAttackConnection12 then
+                task.cancel(FruitAttackConnection12)
+                FruitAttackConnection12 = nil
+            end
+        end
+    end,
+})
+
+
+Tab2:CreateToggle({
     Name="Fruit Attack (T-Rex)",
     CurrentValue=false,
     Callback=function(vatt123367676713)
@@ -1452,6 +1494,56 @@ Tab3:CreateToggle({
                                     1
                                 }
                                 game:GetService("Players").LocalPlayer.Character:WaitForChild("Dragon-Dragon"):WaitForChild("LeftClickRemote"):FireServer(unpack(args))
+                            end
+                        end
+                    end
+                end
+            end)
+        else
+            dragonLoop = false
+            if _G.DragonNPCLoop then
+                task.cancel(_G.DragonNPCLoop)
+                _G.DragonNPCLoop = nil
+            end
+        end
+    end,
+})
+
+Tab3:CreateToggle({
+    Name="Fruit Attack (Tiger) [NPCs Only]",
+    CurrentValue=false,
+    Callback=function(dragonEnabled)
+        local dragonLoop = dragonEnabled
+
+        if dragonLoop then
+            if _G.DragonNPCLoop then
+                task.cancel(_G.DragonNPCLoop)
+            end
+
+            _G.DragonNPCLoop = task.spawn(function()
+                while dragonLoop do
+                    task.wait(0.01)
+
+                    local char = Players.LocalPlayer.Character
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                    if not hrp then continue end
+
+                    local enemies = workspace:FindFirstChild("Enemies")
+                    if not enemies then continue end
+
+                    for _, npc in pairs(enemies:GetChildren()) do
+                        local hum = npc:FindFirstChild("Humanoid")
+                        local npcHrp = npc:FindFirstChild("HumanoidRootPart")
+
+                        if hum and npcHrp and hum.Health > 0 then
+                            if (npcHrp.Position - hrp.Position).Magnitude <= 50 then
+                                local dir = (npcHrp.Position - hrp.Position).Unit
+
+                                local args = {
+                                    vector.create(direction.X, direction.Y, direction.Z),
+                                    1
+                                }
+                                game:GetService("Players").LocalPlayer.Character:WaitForChild("Tiger-Tiger"):WaitForChild("LeftClickRemote"):FireServer(unpack(args))
                             end
                         end
                     end
@@ -1549,7 +1641,6 @@ UIS.InputBegan:Connect(function(input, gp)
         end
     end)
 end)
-
 
 Tab4:CreateToggle({
     Name="Anti Mover",
@@ -1793,6 +1884,15 @@ Tab5:CreateButton({
         hrpTeleport.CFrame = CFrame.new(-12463, 376, -7567)
     end
 })
+
+Tab5:CreateButton({
+    Name = "Tp Piratiña 67",
+    Callback = function()
+        local hrpTeleport = Players.LocalPlayer.Character.HumanoidRootPart
+        hrpTeleport.CFrame = CFrame.new(-11997, 332, -8837)
+    end
+})
+
 
 Tab5:CreateButton({
     Name = "Tp V4",
