@@ -37,7 +37,7 @@ local SafeZoneConnection = nil
 local OriginalPosition = nil
 local FastAttackEnabled = false
 local FastAttackConnection = nil
-local FastAttackRange = 1200
+local FastAttackRange = 5000
 local ESPEnabled = true
 local ESPBoxes = false
 local ESPNames = true
@@ -1973,11 +1973,9 @@ Server:CreateToggle({
                     local maxHoldTime = 10
                     
                     while autoEquipVenom and holdDuration < maxHoldTime do
-                        -- Simulate holding F
                         local vim = game:GetService("VirtualInputManager")
                         vim:SendKeyEvent(true, Enum.KeyCode.F, false, game)
                         
-                        -- Execute team switch
                         local teamArgs = {
                             "SetTeam",
                             "Marines"
@@ -1993,14 +1991,12 @@ Server:CreateToggle({
                         end
                     end
                     
-                    -- Release F
                     local vim = game:GetService("VirtualInputManager")
                     vim:SendKeyEvent(false, Enum.KeyCode.F, false, game)
                     
-                    -- Wait for respawn
                     repeat wait(0.5) until player.Character and player.Character:FindFirstChild("HumanoidRootPart")
                     
-                    wait(1)
+                    wait(4)
                 end
             end)
         end
