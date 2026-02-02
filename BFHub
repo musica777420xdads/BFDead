@@ -38,15 +38,17 @@ local OriginalPosition = nil
 local FastAttackEnabled = false
 local FastAttackConnection = nil
 local FastAttackRange = 5000
-local ESPEnabled = true
+local ESPEnabled = false
 local ESPBoxes = false
-local ESPNames = true
-local EliteESP = false
+local ESPNames = false
+local SwordDealerESP = true
 local ESPDistance = true
 local ESPMaxDistance = 99999999
 local OriginalCamera = nil
 local SpectateConnection = nil
 local ActiveTween = nil
+local AutoFarmPositions = false
+local AutoFarmConnection = nil
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -296,7 +298,7 @@ local Server = Window:CreateTab("Server", gem)
 
 Tab6:CreateToggle({
     Name = "Enable ESP",
-    CurrentValue = true,
+    CurrentValue = false,
     Callback = function(v)
         ESPEnabled = v
     end
@@ -304,7 +306,7 @@ Tab6:CreateToggle({
 
 Tab6:CreateToggle({
     Name = "Boxes",
-    CurrentValue = true,
+    CurrentValue = false,
     Callback = function(v)
         ESPBoxes = v
     end
@@ -312,7 +314,7 @@ Tab6:CreateToggle({
 
 Tab6:CreateToggle({
     Name = "Names",
-    CurrentValue = true,
+    CurrentValue = false,
     Callback = function(v)
         ESPNames = v
     end
@@ -327,18 +329,10 @@ Tab6:CreateToggle({
 })
 
 Tab6:CreateToggle({
-    Name = "Elite ESP",
-    CurrentValue = false,
+    Name = "Sword Dealer ESP",
+    CurrentValue = true,
     Callback = function(v)
-        EliteESP = v
-    end
-})
-
-Tab6:CreateToggle({
-    Name = "Fruit ESP",
-    CurrentValue = false,
-    Callback = function(v)
-        FruitEsp = v
+        SwordDealerESP = v
     end
 })
 
@@ -356,7 +350,7 @@ local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ESPObjects = {}
-local EliteESPObjects = {}
+local SwordDealerESPObjects = {}
 
 local function NewDraw(type, props)
     local d = Drawing.new(type)
@@ -375,12 +369,12 @@ local function ClearESP(plr)
     end
 end
 
-local function ClearEliteESP(obj)
-    if EliteESPObjects[obj] then
-        for _,espObj in pairs(EliteESPObjects[obj]) do
+local function ClearSwordDealerESP(obj)
+    if SwordDealerESPObjects[obj] then
+        for _,espObj in pairs(SwordDealerESPObjects[obj]) do
             espObj:Remove()
         end
-        EliteESPObjects[obj] = nil
+        SwordDealerESPObjects[obj] = nil
     end
 end
 
@@ -501,11 +495,61 @@ RunService.RenderStepped:Connect(function()
             ESPObjects[plr].Text.Visible = false
         end
 
-    if EliteESP then
-        local eliteNames = {"Diablo", "Deandre", "Urban"}
+    if SwordDealerESP then
+        -- Check in ReplicatedStorage.NPCs
+        local obj = ReplicatedStorage.NPCs:FindFirstChild("Legendary Sword Dealer ")
         
-        for _, eliteName in ipairs(eliteNames) do
-            local obj = ReplicatedStorage:FindFirstChild(eliteName)
+        if obj then
+            local hrp = obj:FindFirstChild("HumanoidRootPart")
+            
+            if hrp then
+                local dist = (Camera.CFrame.Position - hrp.Position).Magnitude
+                
+                if dist <= ESPMaxDistance then
+                    local pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+                    
+                    if onScreen then
+                        SwordDealerESPObjects[obj] = SwordDealerESPObjects[obj] or {}
+                        
+                        SwordDealerESPObjects[obj].Box = SwordDealerESPObjects[obj].Box or NewDraw("Square", {
+                            Thickness = 3,
+                            Filled = false,
+                            Color = Color3.fromRGB(255, 215, 0)
+                        })
+                        
+                        local size = Vector2.new(2200 / dist, 3200 / dist)
+                        SwordDealerESPObjects[obj].Box.Size = size
+                        SwordDealerESPObjects[obj].Box.Position = Vector2.new(
+                            pos.X - size.X / 2,
+                            pos.Y - size.Y / 2
+                        )
+                        SwordDealerESPObjects[obj].Box.Visible = true
+                        
+                        SwordDealerESPObjects[obj].Text = SwordDealerESPObjects[obj].Text or NewDraw("Text", {
+                            Size = 18,
+                            Center = true,
+                            Outline = true,
+                            Color = Color3.fromRGB(255, 215, 0)
+                        })
+                        
+                        SwordDealerESPObjects[obj].Text.Text = "Legendary Sword Dealer (" .. math.floor(dist / 10) .. "m)"
+                        SwordDealerESPObjects[obj].Text.Position = Vector2.new(pos.X, pos.Y - 25)
+                        SwordDealerESPObjects[obj].Text.Visible = true
+                    else
+                        ClearSwordDealerESP(obj)
+                    end
+                else
+                    ClearSwordDealerESP(obj)
+                end
+            else
+                ClearSwordDealerESP(obj)
+            end
+        end
+
+        -- Check in workspace.Enemies
+        local enemiesFolder = workspace:FindFirstChild("Enemies")
+        if enemiesFolder then
+            local obj = enemiesFolder:FindFirstChild("Legendary Sword Dealer ")
             
             if obj then
                 local hrp = obj:FindFirstChild("HumanoidRootPart")
@@ -517,156 +561,46 @@ RunService.RenderStepped:Connect(function()
                         local pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
                         
                         if onScreen then
-                            EliteESPObjects[obj] = EliteESPObjects[obj] or {}
+                            SwordDealerESPObjects[obj] = SwordDealerESPObjects[obj] or {}
                             
-                            EliteESPObjects[obj].Box = EliteESPObjects[obj].Box or NewDraw("Square", {
+                            SwordDealerESPObjects[obj].Box = SwordDealerESPObjects[obj].Box or NewDraw("Square", {
                                 Thickness = 3,
                                 Filled = false,
                                 Color = Color3.fromRGB(255, 215, 0)
                             })
                             
                             local size = Vector2.new(2200 / dist, 3200 / dist)
-                            EliteESPObjects[obj].Box.Size = size
-                            EliteESPObjects[obj].Box.Position = Vector2.new(
+                            SwordDealerESPObjects[obj].Box.Size = size
+                            SwordDealerESPObjects[obj].Box.Position = Vector2.new(
                                 pos.X - size.X / 2,
                                 pos.Y - size.Y / 2
                             )
-                            EliteESPObjects[obj].Box.Visible = true
+                            SwordDealerESPObjects[obj].Box.Visible = true
                             
-                            EliteESPObjects[obj].Text = EliteESPObjects[obj].Text or NewDraw("Text", {
+                            SwordDealerESPObjects[obj].Text = SwordDealerESPObjects[obj].Text or NewDraw("Text", {
                                 Size = 18,
                                 Center = true,
                                 Outline = true,
                                 Color = Color3.fromRGB(255, 215, 0)
                             })
                             
-                            EliteESPObjects[obj].Text.Text = eliteName .. " (" .. math.floor(dist / 10) .. "m)"
-                            EliteESPObjects[obj].Text.Position = Vector2.new(pos.X, pos.Y - 25)
-                            EliteESPObjects[obj].Text.Visible = true
+                            SwordDealerESPObjects[obj].Text.Text = "Legendary Sword Dealer (" .. math.floor(dist / 10) .. "m)"
+                            SwordDealerESPObjects[obj].Text.Position = Vector2.new(pos.X, pos.Y - 25)
+                            SwordDealerESPObjects[obj].Text.Visible = true
                         else
-                            ClearEliteESP(obj)
+                            ClearSwordDealerESP(obj)
                         end
                     else
-                        ClearEliteESP(obj)
+                        ClearSwordDealerESP(obj)
                     end
                 else
-                    ClearEliteESP(obj)
-                end
-            end
-        end
-        
-        if FruitEsp then
-            for _, obj in ipairs(workspace:GetChildren()) do
-                if string.find(obj.Name, "Fruit") or obj.Name == "Fruit" then
-                    if obj:IsA("Tool") or obj:IsA("Model") then
-                        local hrp = obj:FindFirstChild("Handle")
-
-                        if hrp then
-                            local dist = (Camera.CFrame.Position - hrp.Position).Magnitude
-
-                            if dist <= ESPMaxDistance then
-                                local pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
-
-                                if onScreen then
-                                    FruitEspObjects[obj] = FruitEspObjects[obj] or {}
-
-                                    FruitEspObjects[obj].Box = FruitEspObjects[obj].Box or NewDraw("Square", {
-                                        Thickness = 3,
-                                        Filled = false,
-                                        Color = Color3.fromRGB(255, 215, 0)
-                                    })
-
-                                    local size = Vector2.new(2200 / dist, 3200 / dist)
-                                    FruitEspObjects[obj].Box.Size = size
-                                    FruitEspObjects[obj].Box.Position = Vector2.new(
-                                        pos.X - size.X / 2,
-                                        pos.Y - size.Y / 2
-                                    )
-                                    FruitEspObjects[obj].Box.Visible = true
-
-                                    FruitEspObjects[obj].Text = FruitEspObjects[obj].Text or NewDraw("Text", {
-                                        Size = 18,
-                                        Center = true,
-                                        Outline = true,
-                                        Color = Color3.fromRGB(255, 215, 0)
-                                    })
-
-                                    FruitEspObjects[obj].Text.Text =
-                                        obj.Name .. " (" .. math.floor(dist / 10) .. "m)"
-                                    FruitEspObjects[obj].Text.Position =
-                                        Vector2.new(pos.X, pos.Y - 25)
-                                    FruitEspObjects[obj].Text.Visible = true
-                                else
-                                    ClearFruitEsp(obj)
-                                end
-                            else
-                                ClearFruitEsp(obj)
-                            end
-                        else
-                            ClearFruitEsp(obj)
-                        end
-                    end
-                end
-            end
-        end
-
-
-        local enemiesFolder = workspace:FindFirstChild("Enemies")
-        if enemiesFolder then
-            for _, eliteName in ipairs(eliteNames) do
-                local obj = enemiesFolder:FindFirstChild(eliteName)
-                
-                if obj then
-                    local hrp = obj:FindFirstChild("HumanoidRootPart")
-                    
-                    if hrp then
-                        local dist = (Camera.CFrame.Position - hrp.Position).Magnitude
-                        
-                        if dist <= ESPMaxDistance then
-                            local pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
-                            
-                            if onScreen then
-                                EliteESPObjects[obj] = EliteESPObjects[obj] or {}
-                                
-                                EliteESPObjects[obj].Box = EliteESPObjects[obj].Box or NewDraw("Square", {
-                                    Thickness = 3,
-                                    Filled = false,
-                                    Color = Color3.fromRGB(255, 215, 0)
-                                })
-                                
-                                local size = Vector2.new(2200 / dist, 3200 / dist)
-                                EliteESPObjects[obj].Box.Size = size
-                                EliteESPObjects[obj].Box.Position = Vector2.new(
-                                    pos.X - size.X / 2,
-                                    pos.Y - size.Y / 2
-                                )
-                                EliteESPObjects[obj].Box.Visible = true
-                                
-                                EliteESPObjects[obj].Text = EliteESPObjects[obj].Text or NewDraw("Text", {
-                                    Size = 18,
-                                    Center = true,
-                                    Outline = true,
-                                    Color = Color3.fromRGB(255, 215, 0)
-                                })
-                                
-                                EliteESPObjects[obj].Text.Text = eliteName .. " (" .. math.floor(dist / 10) .. "m)"
-                                EliteESPObjects[obj].Text.Position = Vector2.new(pos.X, pos.Y - 25)
-                                EliteESPObjects[obj].Text.Visible = true
-                            else
-                                ClearEliteESP(obj)
-                            end
-                        else
-                            ClearEliteESP(obj)
-                        end
-                    else
-                        ClearEliteESP(obj)
-                    end
+                    ClearSwordDealerESP(obj)
                 end
             end
         end
     else
-        for obj, _ in pairs(EliteESPObjects) do
-            ClearEliteESP(obj)
+        for obj, _ in pairs(SwordDealerESPObjects) do
+            ClearSwordDealerESP(obj)
         end
     end
 end
@@ -1999,6 +1933,58 @@ Server:CreateToggle({
                     wait(4)
                 end
             end)
+        end
+    end,
+})
+
+Tab5:CreateToggle({
+    Name = "Auto Farm (Big Buddha)",
+    CurrentValue = false,
+    Callback = function(v)
+        AutoFarmPositions = v
+        
+        if v then
+            if AutoFarmConnection then
+                task.cancel(AutoFarmConnection)
+            end
+            
+            AutoFarmConnection = task.spawn(function()
+                local positions = {
+                    {-717, 173, -11164},
+                    {259, 86, -12658},
+                    {-2073, 114, -12331},
+                    {-2131, 96, -10372}
+                }
+                
+                while AutoFarmPositions do
+                    for _, pos in ipairs(positions) do
+                        if not AutoFarmPositions then break end
+                        
+                        local player = Players.LocalPlayer
+                        if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                            local targetCFrame = CFrame.new(pos[1], pos[2], pos[3])
+                            local hrp = player.Character.HumanoidRootPart
+                            
+                            local targetPart = Instance.new("Part")
+                            targetPart.Anchored = true
+                            targetPart.CanCollide = false
+                            targetPart.Transparency = 1
+                            targetPart.CFrame = targetCFrame
+                            targetPart.Parent = workspace
+                            
+                            TP(targetPart)
+                            
+                            task.wait(12)
+                            targetPart:Destroy()
+                        end
+                    end
+                end
+            end)
+        else
+            if AutoFarmConnection then
+                task.cancel(AutoFarmConnection)
+                AutoFarmConnection = nil
+            end
         end
     end,
 })
