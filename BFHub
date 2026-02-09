@@ -14,18 +14,6 @@ local Window = Rayfield:CreateWindow({
     KeySystem = false
 })
 
-repeat wait() until game:GetService("ReplicatedStorage").Util.CameraShaker.Main
-
-local ss = require(game:GetService("ReplicatedStorage").Util.CameraShaker.Main)
-local xx = function() return nil end
-
-ss.StartShake = xx
-ss.ShakeOnce = xx
-ss.ShakeSustain = xx
-ss.CamerShakeInstance = xx
-ss.Shake = xx
-ss.Start = xx
-
 local running = false
 local TeleportEnabled = false
 local SelectedPlayer = nil
@@ -59,8 +47,6 @@ local TweenService = game:GetService("TweenService")
 local Net = ReplicatedStorage.Modules.Net
 local RegisterHit = Net["RE/RegisterHit"]
 local RegisterAttack = Net["RE/RegisterAttack"]
-
-local CombatUtil = require(ReplicatedStorage.Modules.CombatUtil)
 
 local function TP(targetHRP)
     local player = Players.LocalPlayer
