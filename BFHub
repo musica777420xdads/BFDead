@@ -1974,3 +1974,55 @@ Tab5:CreateToggle({
         end
     end,
 })
+
+Tab5:CreateToggle({
+    Name = "Auto Farm (Big Buddha)",
+    CurrentValue = false,
+    Callback = function(v)
+        AutoFarmPositions = v
+        
+        if v then
+            if AutoFarmConnection then
+                task.cancel(AutoFarmConnection)
+            end
+            
+            AutoFarmConnection = task.spawn(function()
+                local positions = {
+                    {-717, 173, -11164},
+                    {259, 86, -12658},
+                    {-2073, 114, -12331},
+                    {-2131, 96, -10372}
+                }
+                
+                while AutoFarmPositions do
+                    for _, pos in ipairs(positions) do
+                        if not AutoFarmPositions then break end
+                        
+                        local player = Players.LocalPlayer
+                        if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                            local targetCFrame = CFrame.new(pos[1], pos[2], pos[3])
+                            local hrp = player.Character.HumanoidRootPart
+                            
+                            local targetPart = Instance.new("Part")
+                            targetPart.Anchored = true
+                            targetPart.CanCollide = false
+                            targetPart.Transparency = 1
+                            targetPart.CFrame = targetCFrame
+                            targetPart.Parent = workspace
+                            
+                            TP(targetPart)
+                            
+                            task.wait(12)
+                            targetPart:Destroy()
+                        end
+                    end
+                end
+            end)
+        else
+            if AutoFarmConnection then
+                task.cancel(AutoFarmConnection)
+                AutoFarmConnection = nil
+            end
+        end
+    end,
+})
