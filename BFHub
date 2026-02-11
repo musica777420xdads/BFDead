@@ -37,6 +37,10 @@ local SpectateConnection = nil
 local ActiveTween = nil
 local AutoFarmPositions = false
 local AutoFarmConnection = nil
+local AutoStunDetection = false
+local StunDetectionConnection = nil
+local AutoKillEnabled = false
+local AutoKillConnection = nil
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -65,7 +69,7 @@ local function TP(targetHRP)
     local targetCFrame =
         CFrame.new(predictedPos)
         * CFrame.Angles(0, math.rad(targetHRP.Orientation.Y), 0)
-        * CFrame.new(0, YOffset, 0)
+        * CFrame.new(XOffset, YOffset, ZOffset)
 
     local Distance = (targetCFrame.Position - HRP.Position).Magnitude
     local horizontalDist = math.sqrt(
@@ -198,7 +202,7 @@ local function StartInstaTeleporting()
                 local targetHRP = target.Character:FindFirstChild("HumanoidRootPart")
                 
                 if hrp and targetHRP then
-                    local bangOffset = CFrame.new(0, YOffset, 0) 
+                    local bangOffset = CFrame.new(XOffset, YOffset, ZOffset) 
                     hrp.CFrame = targetHRP.CFrame * bangOffset
                 end
             end
@@ -281,6 +285,8 @@ local Tab5 = Window:CreateTab("Teleports", gem)
 local Tab6 = Window:CreateTab("ESP", gem)
 
 local Server = Window:CreateTab("Server", gem)
+
+local TabBoat = Window:CreateTab("Boat", gem)
 
 Tab6:CreateToggle({
     Name = "Enable ESP",
@@ -482,7 +488,6 @@ RunService.RenderStepped:Connect(function()
         end
 
     if SwordDealerESP then
-        -- Check in ReplicatedStorage.NPCs
         local obj = ReplicatedStorage.NPCs:FindFirstChild("Legendary Sword Dealer ")
         
         if obj then
@@ -630,7 +635,6 @@ Tab:CreateToggle({
         if v then
             if SelectedPlayer then 
                 StartInstaTeleporting() 
-            else
             end
         else
             if InstaTpConnection then 
@@ -651,8 +655,6 @@ Tab:CreateToggle({
         if v then
             if SelectedPlayer then 
                 StartSpectating() 
-            else
-                -- Opcional: notificar que no hay jugador seleccionado
             end
         else
             StopSpectating()
@@ -668,14 +670,38 @@ Tab:CreateButton({
 })
 
 Tab:CreateSlider({
+    Name = "X Offset",
+    Range = {-50, 50},
+    Increment = 1,
+    Suffix = "",
+    CurrentValue = 0,
+    Flag = "XOffsetSlider",
+    Callback = function(Value)
+        XOffset = Value
+    end,
+})
+
+Tab:CreateSlider({
     Name = "Y Offset",
-    Range = {0, 500},
+    Range = {0, 250},
     Increment = 1,
     Suffix = "",
     CurrentValue = 0,
     Flag = "YOffsetSlider",
     Callback = function(Value)
         YOffset = Value
+    end,
+})
+
+Tab:CreateSlider({
+    Name = "Z Offset",
+    Range = {-50, 50},
+    Increment = 1,
+    Suffix = "",
+    CurrentValue = 0,
+    Flag = "ZOffsetSlider",
+    Callback = function(Value)
+        ZOffset = Value
     end,
 })
 
@@ -914,6 +940,48 @@ Tab2:CreateToggle({
 })
 
 Tab2:CreateToggle({
+    Name="Fruit Attack (Gas)",
+    CurrentValue=false,
+    Callback=function(vat1t)
+        FruitAttack = vat1t
+        if vat1t then
+            if FruitAttackConnectiongas then 
+                task.cancel(FruitAttackConnectiongas) 
+            end
+            
+            FruitAttackConnectiongas = task.spawn(function()
+                while FruitAttack do
+                    task.wait(0.01)
+                    
+                    local targetPlayer = GetNearestPlayer()
+                    
+                    if targetPlayer and targetPlayer.Character then
+                        local attack67 = Players.LocalPlayer.Character.HumanoidRootPart
+                        local theother67 = targetPlayer.Character.HumanoidRootPart
+
+                        if attack67 and theother67 then
+                            local direction = (theother67.Position - attack67.Position).Unit
+
+                            local args = {
+                                vector.create(direction.X, direction.Y, direction.Z),
+                                1,
+                                true
+                            }
+                            game:GetService("Players").LocalPlayer.Character:WaitForChild("Gas-Gas"):WaitForChild("LeftClickRemote"):FireServer(unpack(args))
+                        end
+                    end
+                end
+            end)
+        else
+            if FruitAttackConnectiongas then
+                task.cancel(FruitAttackConnectiongas)
+                FruitAttackConnectiongas = nil
+            end
+        end
+    end,
+})
+
+Tab2:CreateToggle({
     Name="Fruit Attack (Empyrean-Kitsune)",
     CurrentValue=false,
     Callback=function(vatt141414)
@@ -1004,6 +1072,60 @@ Tab3:CreateToggle({
             if _G.KitsuneNPCLoop then
                 task.cancel(_G.KitsuneNPCLoop)
                 _G.KitsuneNPCLoop = nil
+            end
+        end
+    end,
+})
+
+Tab3:CreateToggle({
+    Name="Fruit Attack (Gas) [NPCs Only]",
+    CurrentValue=false,
+    Callback=function(GasEnablednpcs)
+        local gass = GasEnablednpcs
+
+        if gass then
+            if _G.GasNpcLoop then
+                task.cancel(_G.GasNpcLoop)
+            end
+
+            _G.GasNpcLoop = task.spawn(function()
+                while gass do
+                    task.wait(0.01)
+
+                    local char = Players.LocalPlayer.Character
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                    if not hrp then continue end
+
+                    local enemies = workspace:FindFirstChild("Enemies")
+                    if not enemies then continue end
+
+                    for _, npc in pairs(enemies:GetChildren()) do
+                        local hum = npc:FindFirstChild("Humanoid")
+                        local npcHrp = npc:FindFirstChild("HumanoidRootPart")
+
+                        if hum and npcHrp and hum.Health > 0 then
+                            if (npcHrp.Position - hrp.Position).Magnitude <= 50 then
+                                local dir = (npcHrp.Position - hrp.Position).Unit
+
+                                local args = {
+                                    vector.create(dir.X, dir.Y, dir.Z),
+                                    1,
+                                    true
+                                }
+
+                                char:WaitForChild("Gas-Gas")
+                                    :WaitForChild("LeftClickRemote")
+                                    :FireServer(unpack(args))
+                            end
+                        end
+                    end
+                end
+            end)
+        else
+            gass = false
+            if _G.GasEnablednpcs then
+                task.cancel(_G.GasEnablednpcs)
+                _G.GasEnablednpcs = nil
             end
         end
     end,
@@ -1529,12 +1651,13 @@ Tab3:CreateToggle({
     end,
 })
 
-local Players = game:GetService("Players")
-local UIS = game:GetService("UserInputService")
+local toggled = false
 
 UIS.InputBegan:Connect(function(input, gp)
     if gp then return end
     if input.KeyCode ~= Enum.KeyCode.B then return end
+
+    toggled = not toggled
 
     local char = Players.LocalPlayer.Character
     if not char then return end
@@ -1542,21 +1665,23 @@ UIS.InputBegan:Connect(function(input, gp)
     local hrp = char:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
 
-    local flag = hrp:FindFirstChild("UpLoop")
-
-    if flag then
-        flag:Destroy()
+    if not toggled then
+        local flag = hrp:FindFirstChild("UpLoop")
+        if flag then
+            flag:Destroy()
+        end
         return
     end
 
-    flag = Instance.new("BoolValue")
+    local flag = Instance.new("BoolValue")
     flag.Name = "UpLoop"
     flag.Parent = hrp
 
     task.spawn(function()
-        while flag.Parent do
+        while flag.Parent and toggled do
             local pos = hrp.Position
-            hrp.CFrame = CFrame.new(pos.X, pos.Y + 273861, pos.Z)
+            local randomY = math.random(2000, 9999999)
+            hrp.CFrame = CFrame.new(pos.X, randomY, pos.Z)
             task.wait(0.05)
         end
     end)
@@ -1604,12 +1729,13 @@ UIS.InputBegan:Connect(function(input, gp)
         task.spawn(function()
             while onenabledshotho do
                 local pos = hrp.Position
-                hrp.CFrame = CFrame.new(pos.X, pos.Y - 795679695796326, pos.Z)
+                hrp.CFrame = CFrame.new(pos.X, pos.Y - 795679695796326795679695796326, pos.Z)
                 task.wait(0.01)
             end
         end)
     end
 end)
+
 Tab4:CreateToggle({
     Name="Unbreakable",
     CurrentValue=false,
@@ -1806,6 +1932,14 @@ Tab5:CreateButton({
 })
 
 Tab5:CreateButton({
+    Name = "Tp Sea 1",
+    Callback = function()
+        local hrpTeleport = Players.LocalPlayer.Character.HumanoidRootPart
+        hrpTeleport.CFrame = CFrame.new(-4627.80517578125, 848.0349731445312, -1706.7349853515625)
+    end
+})
+
+Tab5:CreateButton({
     Name = "Tp Piratiña 67",
     Callback = function()
         local hrpTeleport = Players.LocalPlayer.Character.HumanoidRootPart
@@ -1975,54 +2109,220 @@ Tab5:CreateToggle({
     end,
 })
 
-Tab5:CreateToggle({
-    Name = "Auto Farm (Big Buddha)",
-    CurrentValue = false,
-    Callback = function(v)
-        AutoFarmPositions = v
-        
-        if v then
-            if AutoFarmConnection then
-                task.cancel(AutoFarmConnection)
-            end
-            
-            AutoFarmConnection = task.spawn(function()
-                local positions = {
-                    {-717, 173, -11164},
-                    {259, 86, -12658},
-                    {-2073, 114, -12331},
-                    {-2131, 96, -10372}
-                }
-                
-                while AutoFarmPositions do
-                    for _, pos in ipairs(positions) do
-                        if not AutoFarmPositions then break end
-                        
-                        local player = Players.LocalPlayer
-                        if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                            local targetCFrame = CFrame.new(pos[1], pos[2], pos[3])
-                            local hrp = player.Character.HumanoidRootPart
-                            
-                            local targetPart = Instance.new("Part")
-                            targetPart.Anchored = true
-                            targetPart.CanCollide = false
-                            targetPart.Transparency = 1
-                            targetPart.CFrame = targetCFrame
-                            targetPart.Parent = workspace
-                            
-                            TP(targetPart)
-                            
-                            task.wait(12)
-                            targetPart:Destroy()
-                        end
-                    end
+local StopBoatTP = false
+
+TabBoat:CreateButton({
+    Name = "Tp Boat to Player",
+    Callback = function()
+        local Players = game:GetService("Players")
+        local Workspace = game:GetService("Workspace")
+        local LocalPlayer = Players.LocalPlayer
+
+        if not SelectedPlayer then
+            return
+        end
+
+        local targetPlayer = Players:FindFirstChild(SelectedPlayer)
+        if not targetPlayer then
+            return -- Stop if player disconnected
+        end
+
+        StopBoatTP = false -- Reset stop flag
+
+        local boats = Workspace:FindFirstChild("Boats")
+        if not boats then 
+            return 
+        end
+
+        -- Find YOUR boat
+        local sleigh = nil
+        for _, boat in pairs(boats:GetChildren()) do
+            if boat.Name == "PirateSloop" then
+                local owner = boat:FindFirstChild("Owner")
+                if owner and owner.Value == LocalPlayer then
+                    sleigh = boat
+                    break
                 end
-            end)
-        else
-            if AutoFarmConnection then
-                task.cancel(AutoFarmConnection)
-                AutoFarmConnection = nil
             end
         end
-    end,
+
+        if not sleigh then 
+            return 
+        end
+
+        local vehicleSeat = sleigh:FindFirstChild("VehicleSeat")
+        local myHRP = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+
+        if vehicleSeat and myHRP then
+            -- Keep trying until they sit, DC, or stop button pressed
+            repeat
+                task.wait(0.001)
+                
+                -- Check if player disconnected
+                if not Players:FindFirstChild(SelectedPlayer) then
+                    return -- Stop if DC'd
+                end
+                
+                -- Wait for character if they reset
+                if not targetPlayer.Character then
+                    repeat 
+                        task.wait(0.1)
+                        if StopBoatTP or not Players:FindFirstChild(SelectedPlayer) then
+                            return
+                        end
+                    until targetPlayer.Character
+                end
+                
+                local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+                local targetHumanoid = targetPlayer.Character:FindFirstChild("Humanoid")
+                
+                -- If they had humanoid and it's sitting, we're done
+                if targetHumanoid and targetHumanoid.Sit then
+                    break
+                end
+                
+                -- Skip this iteration if character not fully loaded
+                if not targetHRP then
+                    continue
+                end
+                
+                if targetHumanoid and targetHumanoid.Sit then
+                    return
+                end
+                
+                vehicleSeat.CFrame = targetHRP.CFrame * CFrame.new(-3.24, 2.32, 12.45)
+                myHRP.CFrame = vehicleSeat.CFrame
+                
+            until StopBoatTP
+            
+            if not StopBoatTP then
+                task.wait(0.13)
+                vehicleSeat.CFrame = CFrame.new(-12538, 332, -8210)
+            end
+        end
+    end
+})
+
+TabBoat:CreateButton({
+    Name = "Stop Boat TP",
+    Callback = function()
+        StopBoatTP = true
+    end
+})
+
+TabBoat:CreateButton({
+    Name = "Tp Boat to Pos",
+    Callback = function()
+        local Players = game:GetService("Players")
+        local LocalPlayer = Players.LocalPlayer
+        local workspace = game:GetService("Workspace")
+        
+        if not SelectedPlayer then
+            return
+        end
+        
+        local targetPlayer = Players:FindFirstChild(SelectedPlayer)
+        if not targetPlayer or not targetPlayer.Character then
+            return
+        end
+        
+        local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if not targetHRP then
+            return
+        end
+        
+        local boats = workspace:FindFirstChild("Boats")
+        if not boats then 
+            return 
+        end
+        
+        local sleigh = boats:FindFirstChild("PirateSloop")
+        if not sleigh then 
+            return 
+        end
+        
+        local owner = sleigh:FindFirstChild("Owner")
+        if not owner or owner.Value ~= LocalPlayer then 
+            return 
+        end
+        
+        local vehicleSeat = sleigh:FindFirstChild("VehicleSeat")
+        local myHRP = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        
+        if vehicleSeat and myHRP then
+            myHRP.CFrame = vehicleSeat.CFrame
+            task.wait(0.1)
+            vehicleSeat.CFrame = CFrame.new(-12463, 376, -7567)
+        end
+    end
+})
+
+local function BuyBoat()
+    local myHRP67 = game:GetService("Players").LocalPlayer.Character.HumanoidRootPart
+    myHRP67.CFrame = CFrame.new(-9534, 7, -8329)
+    local args = {
+        "BuyBoat",
+        "PirateSloop"
+    }
+    game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("CommF_"):InvokeServer(unpack(args))
+end
+
+TabBoat:CreateButton({
+    Name = "Buy Pirate Sloop",
+    Callback = function()
+        local boats = workspace:FindFirstChild("Boats")
+        if not boats then 
+            return 
+        end
+        
+        local sleigh = boats:FindFirstChild("PirateSloop")
+        if not sleigh then 
+            repeat 
+                BuyBoat()
+                task.wait(0.001)
+                sleigh = boats:FindFirstChild("PirateSloop")
+            until sleigh
+        end
+    end
+})
+
+TabBoat:CreateButton({
+    Name = "Testing",
+    Callback = function()
+        local LocalPlayer = game:GetService("Players").LocalPlayer
+        local boats = workspace:FindFirstChild("Boats")
+        if not boats then 
+            return 
+        end
+        
+        local sleigh = nil
+        for _, boat in pairs(boats:GetChildren()) do
+            if boat.Name == "PirateSloop" then
+                local owner = boat:FindFirstChild("Owner")
+                if owner and owner.Value == LocalPlayer then
+                    sleigh = boat
+                    break
+                end
+            end
+        end
+        
+        if not sleigh then 
+            return 
+        end
+        
+        local vehicleSeat = sleigh:FindFirstChild("VehicleSeat")  
+        local myHRP = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if vehicleSeat and myHRP then
+            local startTime = tick()
+            while tick() - startTime < 1 do
+                vehicleSeat.CFrame = CFrame.new(myHRP.Position + Vector3.new(0, -795679695796326, 0))
+            end
+            
+            startTime = tick()
+            while tick() - startTime < 1 do
+                task.wait(0.001)
+                vehicleSeat.CFrame = CFrame.new(myHRP.Position + Vector3.new(0, -795679695796326, 0))
+            end
+        end
+    end
 })
