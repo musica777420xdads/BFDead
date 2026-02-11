@@ -1,0 +1,806 @@
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local Lighting = game:GetService("Lighting")
+local Camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+
+Lighting.FogEnd = 100000
+for i,v in pairs(Lighting:GetDescendants()) do
+    if v:IsA("Atmosphere") then
+        v:Destroy()
+    end
+end
+
+local StatConnection = nil
+
+local function SetupCharacter(char)
+    if not char then return end
+
+    task.wait(0.1)
+
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        humanoid.WalkSpeed = 250
+        humanoid.JumpPower = 250
+    end
+
+
+    char:SetAttribute("DashLength", 120)
+    char:SetAttribute("DashLengthAir", 120)
+
+
+    if StatConnection then
+        StatConnection:Disconnect()
+    end
+
+    StatConnection = RunService.Heartbeat:Connect(function()
+        if char and char.Parent then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                if hum.WalkSpeed ~= 250 then
+                    hum.WalkSpeed = 250
+                end
+                if hum.JumpPower ~= 250 then
+                    hum.JumpPower = 250
+                end
+            end
+        else
+            if StatConnection then
+                StatConnection:Disconnect()
+            end
+        end
+    end)
+end
+
+
+if LocalPlayer.Character then
+    SetupCharacter(LocalPlayer.Character)
+end
+
+
+LocalPlayer.CharacterAdded:Connect(SetupCharacter)
+
+
+local SelectedPlayer = nil
+local FOVSize = 200
+local IsActive = false
+local AnimationTrack = nil
+local OrbitRadius = 7.5
+local RandomOffset = Vector3.new(0, 0, 0)
+local OriginalCameraCFrame = nil
+
+
+local OrbitConnection = nil
+local AttackConnection = nil
+local ESPConnection = nil
+local DeathCheckConnection = nil
+
+
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Thickness = 2
+FOVCircle.NumSides = 100
+FOVCircle.Radius = FOVSize
+FOVCircle.Filled = false
+FOVCircle.Visible = true
+FOVCircle.ZIndex = 999
+FOVCircle.Transparency = 1
+FOVCircle.Color = Color3.fromRGB(255, 255, 255)
+
+local ESPObjects = {}
+
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "StatusUI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local function safeParent()
+    pcall(function()
+        if game:GetService("CoreGui") then
+            ScreenGui.Parent = game:GetService("CoreGui")
+        else
+            ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+        end
+    end)
+end
+safeParent()
+
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Parent = ScreenGui
+MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+MainFrame.BorderColor3 = Color3.fromRGB(255, 255, 255)
+MainFrame.BorderSizePixel = 2
+MainFrame.Position = UDim2.new(0.02, 0, 0.3, 0)
+MainFrame.Size = UDim2.new(0, 250, 0, 75)
+MainFrame.Active = true
+MainFrame.Draggable = true
+
+
+local Title = Instance.new("TextLabel")
+Title.Name = "Title"
+Title.Parent = MainFrame
+Title.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
+Title.BorderSizePixel = 0
+Title.Size = UDim2.new(1, 0, 0, 30)
+Title.Font = Enum.Font.GothamBold
+Title.Text = "#FREEWALTERSANCHEZ"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextSize = 16
+Title.TextScaled = true
+
+
+local function CreateLabel(name, text, position)
+    local label = Instance.new("TextLabel")
+    label.Name = name
+    label.Parent = MainFrame
+    label.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    label.BorderSizePixel = 0
+    label.Position = position
+    label.Size = UDim2.new(0.95, 0, 0, 25)
+    label.Font = Enum.Font.Gotham
+    label.Text = text
+    label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    label.TextSize = 12
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.TextWrapped = true
+
+    local padding = Instance.new("UIPadding")
+    padding.PaddingLeft = UDim.new(0, 5)
+    padding.Parent = label
+
+    return label
+end
+
+local TargetLabel = CreateLabel("Target", "not 67", UDim2.new(0.025, 0, 0, 40))
+
+
+local function Notify(text)
+    pcall(function()
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "cuacker 67",
+            Text = text,
+            Duration = 3
+        })
+    end)
+end
+
+
+local function UpdateFOVCircle()
+    local mousePos = UIS:GetMouseLocation()
+    FOVCircle.Position = mousePos
+    FOVCircle.Radius = FOVSize
+    FOVCircle.Visible = true
+end
+
+local function ClearESP(plr)
+    if ESPObjects[plr] then
+        for _, obj in pairs(ESPObjects[plr]) do
+            if obj.Remove then
+                obj:Remove()
+            elseif obj.Destroy then
+                obj:Destroy()
+            end
+        end
+        ESPObjects[plr] = nil
+    end
+end
+
+local function GetCurrentFruit()
+    local success, fruit = pcall(function()
+        return LocalPlayer.Data.DevilFruit.Value
+    end)
+
+    if success and fruit and fruit ~= "" then
+        return fruit
+    end
+    return nil
+end
+
+
+local function GetClosestPlayerInFOV()
+    local closestPlayer = nil
+    local shortestDistance = math.huge
+    local mousePos = UIS:GetMouseLocation()
+
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+            local humanoid = player.Character:FindFirstChild("Humanoid")
+
+            if hrp and humanoid and humanoid.Health > 0 then
+                local screenPos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+
+                if onScreen then
+                    local distanceFromMouse = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+
+                    if distanceFromMouse <= FOVSize and distanceFromMouse < shortestDistance then
+                        shortestDistance = distanceFromMouse
+                        closestPlayer = player
+                    end
+                end
+            end
+        end
+    end
+
+    return closestPlayer
+end
+
+
+local FruitAttackMap = {
+    ["Kitsune"] = function(targetPos)
+        local char = LocalPlayer.Character
+        if not char then return end
+
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp or not targetPos then return end
+
+        local direction = (targetPos - hrp.Position).Unit
+        local args = {
+            vector.create(direction.X, direction.Y, direction.Z),
+            1,
+            true
+        }
+
+        local tool = char:FindFirstChild("Kitsune-Kitsune")
+        if tool then
+            tool:FindFirstChild("LeftClickRemote"):FireServer(unpack(args))
+        end
+    end,
+
+    ["Gas"] = function(targetPos)
+        local char = LocalPlayer.Character
+        if not char then return end
+
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp or not targetPos then return end
+
+        local direction = (targetPos - hrp.Position).Unit
+        local args = {
+            vector.create(direction.X, direction.Y, direction.Z),
+            1,
+            true
+        }
+
+        local tool = char:FindFirstChild("Gas-Gas")
+        if tool then
+            tool:FindFirstChild("LeftClickRemote"):FireServer(unpack(args))
+        end
+    end,
+
+    ["Empyrean (Kitsune)"] = function(targetPos)
+        local char = LocalPlayer.Character
+        if not char then return end
+
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp or not targetPos then return end
+
+        local direction = (targetPos - hrp.Position).Unit
+        local args = {
+            vector.create(direction.X, direction.Y, direction.Z),
+            4,
+            true
+        }
+
+        local tool = char:FindFirstChild("Empyrean (Kitsune)-Empyrean (Kitsune)")
+        if tool then
+            tool:FindFirstChild("LeftClickRemote"):FireServer(unpack(args))
+        end
+    end,
+
+    ["Control"] = function(targetPos)
+        local char = LocalPlayer.Character
+        if not char then return end
+
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp or not targetPos then return end
+
+        local direction = (targetPos - hrp.Position).Unit
+        local args = {
+            vector.create(direction.X, direction.Y, direction.Z),
+            1,
+            true
+        }
+
+        local tool = char:FindFirstChild("Control-Control")
+        if tool then
+            tool:FindFirstChild("LeftClickRemote"):FireServer(unpack(args))
+        end
+    end,
+
+    ["Pain"] = function(targetPos)
+        local char = LocalPlayer.Character
+        if not char then return end
+
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp or not targetPos then return end
+
+        local direction = (targetPos - hrp.Position).Unit
+        local args = {
+            vector.create(direction.X, 0, direction.Z),
+            1,
+            true
+        }
+
+        local tool = char:FindFirstChild("Pain-Pain")
+        if tool then
+            tool:FindFirstChild("LeftClickRemote"):FireServer(unpack(args))
+        end
+    end,
+
+    ["Dragon"] = function(targetPos)
+        local char = LocalPlayer.Character
+        if not char then return end
+
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp or not targetPos then return end
+
+        local direction = (targetPos - hrp.Position).Unit
+        local args = {
+            vector.create(direction.X, direction.Y, direction.Z),
+            1
+        }
+
+        local tool = char:FindFirstChild("Dragon-Dragon")
+        if tool then
+            tool:FindFirstChild("LeftClickRemote"):FireServer(unpack(args))
+        end
+    end,
+
+    ["Tiger"] = function(targetPos)
+        local char = LocalPlayer.Character
+        if not char then return end
+
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp or not targetPos then return end
+
+        local direction = (targetPos - hrp.Position).Unit
+        local args = {
+            vector.create(direction.X, direction.Y, direction.Z),
+            3
+        }
+
+        local tool = char:FindFirstChild("Tiger-Tiger")
+        if tool then
+            tool:FindFirstChild("LeftClickRemote"):FireServer(unpack(args))
+        end
+    end,
+
+    ["T-Rex"] = function(targetPos)
+        local char = LocalPlayer.Character
+        if not char then return end
+
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp or not targetPos then return end
+
+        local direction = (targetPos - hrp.Position).Unit
+        local args = {
+            vector.create(direction.X, direction.Y, direction.Z),
+            1
+        }
+
+        local tool = char:FindFirstChild("T-Rex-T-Rex")
+        if tool then
+            tool:FindFirstChild("LeftClickRemote"):FireServer(unpack(args))
+        end
+    end,
+
+    ["Gravity"] = function(targetPos)
+        local char = LocalPlayer.Character
+        if not char then return end
+
+        if not targetPos then return end
+
+        local args = {
+            "TAP",
+            vector.create(targetPos.X, targetPos.Y, targetPos.Z),
+            vector.create(targetPos.X + 39.6, targetPos.Y + 25, targetPos.Z + 50)
+        }
+
+        local humanoid = char:FindFirstChild("Humanoid")
+        if humanoid then
+            local remote = humanoid:FindFirstChild("")
+            if remote then
+                remote:InvokeServer(unpack(args))
+            end
+        end
+    end
+}
+
+local function AttackWithFruit(targetPos)
+    local fruit = GetCurrentFruit()
+    if not fruit then return end
+
+
+    for fruitName, attackFunc in pairs(FruitAttackMap) do
+        if string.find(fruit, fruitName) then
+            pcall(attackFunc, targetPos)
+            return
+        end
+    end
+end
+
+
+local function PlayEmoteAnimation()
+    local char = LocalPlayer.Character
+    if not char then return end
+
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
+
+
+    if AnimationTrack then
+        AnimationTrack:Stop()
+        AnimationTrack = nil
+    end
+
+
+    pcall(function()
+        local args = {
+            [1] = 15610015346  
+        }
+
+        local emoteEvent = ReplicatedStorage:FindFirstChild("Events")
+        if emoteEvent then
+            local playEmote = emoteEvent:FindFirstChild("PlayEmote")
+            if playEmote then
+                playEmote:FireServer(unpack(args))
+            end
+        end
+
+
+        humanoid:PlayEmote("Yungblud Happier Jump")
+    end)
+end
+
+local function StopEmoteAnimation()
+    local char = LocalPlayer.Character
+    if not char then return end
+
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
+
+
+    pcall(function()
+        for _, track in pairs(humanoid:GetPlayingAnimationTracks()) do
+            track:Stop()
+        end
+    end)
+
+    if AnimationTrack then
+        AnimationTrack:Stop()
+        AnimationTrack = nil
+    end
+end
+
+
+local function StartDeathCheck()
+    if DeathCheckConnection then
+        task.cancel(DeathCheckConnection)
+    end
+
+    DeathCheckConnection = task.spawn(function()
+        while IsActive and SelectedPlayer do
+            task.wait(0.1)
+
+
+            local target = Players:FindFirstChild(SelectedPlayer)
+            if not target or not target.Character then
+                StopAll()
+                Notify("ragequit")
+                break
+            end
+
+
+            local targetHumanoid = target.Character:FindFirstChild("Humanoid")
+            if not targetHumanoid or targetHumanoid.Health <= 0 then
+                StopAll()
+                Notify("raped")
+                break
+            end
+
+
+            local char = LocalPlayer.Character
+            if not char then
+                StopAll()
+                break
+            end
+
+            local myHumanoid = char:FindFirstChild("Humanoid")
+            if not myHumanoid or myHumanoid.Health <= 0 then
+                StopAll()
+                Notify("1 in a million")
+                break
+            end
+        end
+    end)
+end
+
+local function StopDeathCheck()
+    if DeathCheckConnection then
+        task.cancel(DeathCheckConnection)
+        DeathCheckConnection = nil
+    end
+end
+
+
+local function StartRandomOrbit()
+    if OrbitConnection then
+        task.cancel(OrbitConnection)
+    end
+
+
+    PlayEmoteAnimation()
+
+    OrbitConnection = task.spawn(function()
+        while IsActive and SelectedPlayer do
+            task.wait(0.001)
+
+            local target = Players:FindFirstChild(SelectedPlayer)
+            if not target or not target.Character then continue end
+
+            local targetHRP = target.Character:FindFirstChild("HumanoidRootPart")
+            if not targetHRP then continue end
+
+            local char = LocalPlayer.Character
+            if not char then continue end
+
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            local humanoid = char:FindFirstChild("Humanoid")
+            if not hrp or not humanoid then continue end
+
+
+            local randomX = (math.random() - 0.5) * 2 * OrbitRadius
+            local randomY = (math.random() - 0.5) * 2 * OrbitRadius
+            local randomZ = (math.random() - 0.5) * 2 * OrbitRadius
+            RandomOffset = Vector3.new(randomX, randomY, randomZ)
+
+
+            local targetPos = targetHRP.Position
+            local orbitPos = targetPos + RandomOffset
+
+
+            hrp.CFrame = CFrame.new(orbitPos, targetPos)
+
+
+            for _, v in ipairs(char:GetChildren()) do
+                if v:IsA("BasePart") then
+                    v.CanCollide = false
+                end
+            end
+        end
+    end)
+end
+
+local function StopRandomOrbit()
+    if OrbitConnection then
+        task.cancel(OrbitConnection)
+        OrbitConnection = nil
+    end
+
+
+    StopEmoteAnimation()
+
+
+    local char = LocalPlayer.Character
+    if char then
+        for _, v in ipairs(char:GetChildren()) do
+            if v:IsA("BasePart") and v.Name ~= "HumanoidRootPart" then
+                v.CanCollide = true
+            end
+        end
+    end
+end
+
+
+local function StartAutoAttack()
+    if AttackConnection then
+        task.cancel(AttackConnection)
+    end
+
+    AttackConnection = task.spawn(function()
+        while IsActive do
+            task.wait(0.02)
+
+            if not SelectedPlayer then continue end
+
+            local target = Players:FindFirstChild(SelectedPlayer)
+            if not target or not target.Character then continue end
+
+            local targetHRP = target.Character:FindFirstChild("HumanoidRootPart")
+            local targetHumanoid = target.Character:FindFirstChild("Humanoid")
+
+            if targetHRP and targetHumanoid and targetHumanoid.Health > 0 then
+                AttackWithFruit(targetHRP.Position)
+            end
+        end
+    end)
+end
+
+local function StopAutoAttack()
+    if AttackConnection then
+        task.cancel(AttackConnection)
+        AttackConnection = nil
+    end
+end
+
+
+local function CreateChams(character)
+    local highlight = Instance.new("Highlight")
+    highlight.Name = "ESPHighlight"
+    highlight.Adornee = character
+    highlight.FillColor = Color3.fromRGB(255, 60, 60)
+    highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+    highlight.FillTransparency = 0.5
+    highlight.OutlineTransparency = 0
+    highlight.Parent = character
+
+    return highlight
+end
+
+local function UpdateESP()
+
+    local closestInFOV = GetClosestPlayerInFOV()
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr == LocalPlayer then
+            ClearESP(plr)
+            continue
+        end
+
+        local char = plr.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        local hum = char and char:FindFirstChild("Humanoid")
+
+        if not hrp or not hum or hum.Health <= 0 then
+            ClearESP(plr)
+            continue
+        end
+
+        local pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+
+        if not onScreen then
+            ClearESP(plr)
+            continue
+        end
+
+        ESPObjects[plr] = ESPObjects[plr] or {}
+
+
+        if not char:FindFirstChild("ESPHighlight") then
+            local highlight = CreateChams(char)
+            ESPObjects[plr].Highlight = highlight
+        end
+
+
+        ESPObjects[plr].Text = ESPObjects[plr].Text or Drawing.new("Text")
+        ESPObjects[plr].Text.Size = 16
+        ESPObjects[plr].Text.Center = true
+        ESPObjects[plr].Text.Outline = true
+
+        local dist = (Camera.CFrame.Position - hrp.Position).Magnitude
+        local txt = plr.Name .. " [" .. math.floor(dist / 10) .. "m]"
+
+
+        if closestInFOV and closestInFOV == plr and not IsActive then
+            ESPObjects[plr].Text.Color = Color3.fromRGB(255, 255, 0) 
+            txt = "→ " .. txt .. " ←"
+        elseif SelectedPlayer and SelectedPlayer == plr.Name then
+            ESPObjects[plr].Text.Color = Color3.fromRGB(0, 255, 0) 
+        else
+            ESPObjects[plr].Text.Color = Color3.fromRGB(255, 255, 255) 
+        end
+
+        ESPObjects[plr].Text.Text = txt
+        ESPObjects[plr].Text.Position = Vector2.new(pos.X, pos.Y - 25)
+        ESPObjects[plr].Text.Visible = true
+
+
+
+
+        local shouldShowTracer = false
+        local tracerColor = Color3.fromRGB(0, 255, 0)
+
+        if not IsActive and closestInFOV and closestInFOV == plr then
+
+            shouldShowTracer = true
+            tracerColor = Color3.fromRGB(255, 255, 0)
+        elseif IsActive and SelectedPlayer and SelectedPlayer == plr.Name then
+
+            shouldShowTracer = true
+            tracerColor = Color3.fromRGB(0, 255, 0)
+        end
+
+        if shouldShowTracer then
+            if not ESPObjects[plr].Tracer then
+                ESPObjects[plr].Tracer = Drawing.new("Line")
+                ESPObjects[plr].Tracer.Thickness = 2
+            end
+
+            local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+            ESPObjects[plr].Tracer.From = screenCenter
+            ESPObjects[plr].Tracer.To = Vector2.new(pos.X, pos.Y)
+            ESPObjects[plr].Tracer.Color = tracerColor
+            ESPObjects[plr].Tracer.Visible = true
+        else
+            if ESPObjects[plr].Tracer then
+                ESPObjects[plr].Tracer.Visible = false
+            end
+        end
+    end
+    
+    -- Update UI every frame to show current aiming target
+    UpdateUI()
+end
+
+ESPConnection = RunService.RenderStepped:Connect(function()
+    UpdateFOVCircle()
+    UpdateESP()
+end)
+
+local function UpdateUI()
+    if SelectedPlayer then
+        TargetLabel.Text = "cuacker victim: " .. SelectedPlayer
+        TargetLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+    else
+        local closest = GetClosestPlayerInFOV()
+        if closest then
+            TargetLabel.Text = "aiming at: " .. closest.Name
+            TargetLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
+        else
+            TargetLabel.Text = "not 67"
+            TargetLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        end
+    end
+end
+
+function StopAll()
+    IsActive = false
+    SelectedPlayer = nil
+
+    StopRandomOrbit()
+    StopAutoAttack()
+    StopDeathCheck()
+
+    UpdateUI()
+end
+
+UIS.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+
+    if input.KeyCode == Enum.KeyCode.H then
+        if IsActive then
+            StopAll()
+        else
+            local closest = GetClosestPlayerInFOV()
+
+            if closest then
+                SelectedPlayer = closest.Name
+                IsActive = true
+
+                StartRandomOrbit()
+                StartAutoAttack()
+                StartDeathCheck()
+
+                UpdateUI()
+
+                Notify("cuacker says hi " .. closest.Name)
+            else
+            end
+        end
+    end
+end)
+
+Players.PlayerRemoving:Connect(function(plr)
+    ClearESP(plr)
+    if SelectedPlayer == plr.Name then
+        StopAll()
+        Notify("ragequit")
+    end
+end)
+
+Notify("pres h for magik")
