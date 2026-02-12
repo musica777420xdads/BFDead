@@ -29,7 +29,6 @@ local FastAttackRange = 5000
 local ESPEnabled = false
 local ESPBoxes = false
 local ESPNames = false
-local SwordDealerESP = true
 local ESPDistance = true
 local ESPMaxDistance = 99999999
 local OriginalCamera = nil
@@ -361,14 +360,6 @@ local function ClearESP(plr)
     end
 end
 
-local function ClearSwordDealerESP(obj)
-    if SwordDealerESPObjects[obj] then
-        for _,espObj in pairs(SwordDealerESPObjects[obj]) do
-            espObj:Remove()
-        end
-        SwordDealerESPObjects[obj] = nil
-    end
-end
 
 local function GetLevel(plr)
     local data = plr:FindFirstChild("Data")
@@ -486,115 +477,7 @@ RunService.RenderStepped:Connect(function()
         elseif ESPObjects[plr].Text then
             ESPObjects[plr].Text.Visible = false
         end
-
-    if SwordDealerESP then
-        local obj = ReplicatedStorage.NPCs:FindFirstChild("Legendary Sword Dealer ")
-        
-        if obj then
-            local hrp = obj:FindFirstChild("HumanoidRootPart")
-            
-            if hrp then
-                local dist = (Camera.CFrame.Position - hrp.Position).Magnitude
-                
-                if dist <= ESPMaxDistance then
-                    local pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
-                    
-                    if onScreen then
-                        SwordDealerESPObjects[obj] = SwordDealerESPObjects[obj] or {}
-                        
-                        SwordDealerESPObjects[obj].Box = SwordDealerESPObjects[obj].Box or NewDraw("Square", {
-                            Thickness = 3,
-                            Filled = false,
-                            Color = Color3.fromRGB(255, 215, 0)
-                        })
-                        
-                        local size = Vector2.new(2200 / dist, 3200 / dist)
-                        SwordDealerESPObjects[obj].Box.Size = size
-                        SwordDealerESPObjects[obj].Box.Position = Vector2.new(
-                            pos.X - size.X / 2,
-                            pos.Y - size.Y / 2
-                        )
-                        SwordDealerESPObjects[obj].Box.Visible = true
-                        
-                        SwordDealerESPObjects[obj].Text = SwordDealerESPObjects[obj].Text or NewDraw("Text", {
-                            Size = 18,
-                            Center = true,
-                            Outline = true,
-                            Color = Color3.fromRGB(255, 215, 0)
-                        })
-                        
-                        SwordDealerESPObjects[obj].Text.Text = "Legendary Sword Dealer (" .. math.floor(dist / 10) .. "m)"
-                        SwordDealerESPObjects[obj].Text.Position = Vector2.new(pos.X, pos.Y - 25)
-                        SwordDealerESPObjects[obj].Text.Visible = true
-                    else
-                        ClearSwordDealerESP(obj)
-                    end
-                else
-                    ClearSwordDealerESP(obj)
-                end
-            else
-                ClearSwordDealerESP(obj)
-            end
-        end
-
-        -- Check in workspace.Enemies
-        local enemiesFolder = workspace:FindFirstChild("Enemies")
-        if enemiesFolder then
-            local obj = enemiesFolder:FindFirstChild("Legendary Sword Dealer ")
-            
-            if obj then
-                local hrp = obj:FindFirstChild("HumanoidRootPart")
-                
-                if hrp then
-                    local dist = (Camera.CFrame.Position - hrp.Position).Magnitude
-                    
-                    if dist <= ESPMaxDistance then
-                        local pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
-                        
-                        if onScreen then
-                            SwordDealerESPObjects[obj] = SwordDealerESPObjects[obj] or {}
-                            
-                            SwordDealerESPObjects[obj].Box = SwordDealerESPObjects[obj].Box or NewDraw("Square", {
-                                Thickness = 3,
-                                Filled = false,
-                                Color = Color3.fromRGB(255, 215, 0)
-                            })
-                            
-                            local size = Vector2.new(2200 / dist, 3200 / dist)
-                            SwordDealerESPObjects[obj].Box.Size = size
-                            SwordDealerESPObjects[obj].Box.Position = Vector2.new(
-                                pos.X - size.X / 2,
-                                pos.Y - size.Y / 2
-                            )
-                            SwordDealerESPObjects[obj].Box.Visible = true
-                            
-                            SwordDealerESPObjects[obj].Text = SwordDealerESPObjects[obj].Text or NewDraw("Text", {
-                                Size = 18,
-                                Center = true,
-                                Outline = true,
-                                Color = Color3.fromRGB(255, 215, 0)
-                            })
-                            
-                            SwordDealerESPObjects[obj].Text.Text = "Legendary Sword Dealer (" .. math.floor(dist / 10) .. "m)"
-                            SwordDealerESPObjects[obj].Text.Position = Vector2.new(pos.X, pos.Y - 25)
-                            SwordDealerESPObjects[obj].Text.Visible = true
-                        else
-                            ClearSwordDealerESP(obj)
-                        end
-                    else
-                        ClearSwordDealerESP(obj)
-                    end
-                else
-                    ClearSwordDealerESP(obj)
-                end
-            end
-        end
-    else
-        for obj, _ in pairs(SwordDealerESPObjects) do
-            ClearSwordDealerESP(obj)
-        end
     end
-end
 end)
 
 Players.PlayerRemoving:Connect(ClearESP)
